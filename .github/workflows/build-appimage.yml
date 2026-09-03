@@ -26,7 +26,7 @@ jobs:
       - name: Установка системных библиотек для Linux
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential python3 libfuse2 icnsutils graphicsmagick
+          sudo apt-get install -y build-essential binutils python3 libfuse2 icnsutils graphicsmagick
 
       - name: Установка npm-зависимостей
         run: npm install
@@ -43,6 +43,7 @@ jobs:
       - name: Сборка Linux пакетов (AppImage и DEB для Astra Linux)
         run: |
           npx electron-builder --linux AppImage deb --x64 -p never
+          node electron/patch-appimage.cjs
           chmod +x release/*.AppImage
           cd release
           tar -czvf docflow-portable-astra-linux.tar.gz *.AppImage
