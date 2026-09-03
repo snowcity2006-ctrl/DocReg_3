@@ -12,11 +12,25 @@ import { logger } from './logger';
 import { store } from './store';
 import { DatabaseConfig } from '../src/types';
 
-// Оптимизация и совместимость для Astra Linux (Parsec / X11 / Wayland)
-app.commandLine.appendSwitch('disable-gpu-process-crash-limit');
+// Оптимизация и совместимость для Astra Linux (Parsec / X11 / Wayland / Fly)
 if (process.platform === 'linux') {
+  // В Astra Linux (включая замкнутую программную среду и мандатный контроль доступа)
+  // песочница Chromium требует специальных прав suid либо должна быть отключена:
   app.commandLine.appendSwitch('no-sandbox');
+  app.commandLine.appendSwitch('disable-setuid-sandbox');
+  // Отключение аппаратного ускорения при отсутствии драйверов в сертифицированных сборках
+  app.commandLine.appendSwitch('disable-gpu-sandbox');
+  app.commandLine.appendSwitch('disable-dev-shm-usage');
 }
+app.commandLine.appendSwitch('disable-gpu-process-crash-limit');
+
+// Обработка критических ошибок до падения процесса
+process.on('uncaughtException', (error) => {
+  console.error('[DocFlow Critical Error]:', error);
+  try {
+    logger.log('error', 'main', `Критическая ошибка процесса: ${error.message}`, error.stack);
+  } catch {}
+});
 
 let mainWindow: BrowserWindow | null = null;
 

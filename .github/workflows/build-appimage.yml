@@ -43,13 +43,17 @@ jobs:
       - name: Сборка Portable AppImage
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --linux AppImage --x64
+        run: |
+          npx electron-builder --linux AppImage --x64
+          cp run-astra-linux.sh release/
 
       - name: Загрузка AppImage в артефакты сборки
         uses: actions/upload-artifact@v4
         with:
           name: DocFlow-Linux-Portable-AppImage
-          path: release/*.AppImage
+          path: |
+            release/*.AppImage
+            release/run-astra-linux.sh
           if-no-files-found: warn
           retention-days: 30
 
@@ -57,7 +61,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
         with:
-          files: release/*.AppImage
+          files: |
+            release/*.AppImage
+            release/run-astra-linux.sh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

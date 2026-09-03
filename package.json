@@ -54,12 +54,18 @@
       "dist-electron/preload.js",
       "package.json"
     ],
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**"
+    ],
     "linux": {
       "target": [
         "AppImage"
       ],
       "category": "Office",
-      "executableName": "docflow-portable"
+      "executableName": "docflow-portable",
+      "synopsis": "Система учета документооборота организации",
+      "description": "Портативная система учета документооборота с многопользовательской базой данных SQLite на сетевом диске для Astra Linux и Windows"
     },
     "win": {
       "target": [
