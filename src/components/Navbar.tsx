@@ -253,70 +253,81 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 id="btn-theme-menu"
                 onClick={() => setThemeMenuOpen(!themeMenuOpen)}
-                title="Выбор темы оформления"
-                className="p-2 text-gray-400 hover:text-amber-400 hover:bg-[#2D3139] bg-[#0F1115] rounded-lg transition-colors border border-[#2D3139] cursor-pointer flex items-center gap-1"
+                title="Выбор темы оформления (Светлая / Темная / Системная)"
+                className="p-2 text-gray-400 hover:text-amber-400 hover:bg-[#2D3139] bg-[#0F1115] rounded-lg transition-colors border border-[#2D3139] cursor-pointer flex items-center gap-1.5"
               >
-                {theme === 'light' && <Sun className="w-4 h-4 text-amber-400" />}
+                {theme === 'light' && <Sun className="w-4 h-4 text-amber-500" />}
                 {theme === 'dark' && <Moon className="w-4 h-4 text-blue-400" />}
                 {theme === 'system' && <Laptop className="w-4 h-4 text-gray-400" />}
+                <span className="text-[11px] hidden sm:inline font-medium">
+                  {theme === 'light' ? 'Светлая' : theme === 'dark' ? 'Темная' : 'Авто'}
+                </span>
               </button>
 
               {themeMenuOpen && (
-                <div
-                  className="absolute right-0 mt-2 w-48 bg-[#171A21] rounded-xl shadow-2xl border border-[#2D3139] py-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150 text-[#E0E0E0]"
-                  onMouseLeave={() => setThemeMenuOpen(false)}
-                >
-                  <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                    Оформление
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setThemeMenuOpen(false)}
+                  />
+                  <div
+                    className="absolute right-0 mt-2 w-48 bg-[#171A21] rounded-xl shadow-2xl border border-[#2D3139] py-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150 text-[#E0E0E0]"
+                  >
+                    <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                      Оформление
+                    </div>
+                    <button
+                      id="theme-option-light"
+                      onClick={() => {
+                        onThemeChange('light');
+                        setThemeMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-[#1F222B] transition-colors cursor-pointer ${
+                        theme === 'light' ? 'text-blue-500 font-semibold bg-[#1F222B]/50' : 'text-gray-300'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Sun className="w-3.5 h-3.5 text-amber-500" />
+                        Светлая
+                      </span>
+                      {theme === 'light' && <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" />}
+                    </button>
+
+                    <button
+                      id="theme-option-dark"
+                      onClick={() => {
+                        onThemeChange('dark');
+                        setThemeMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-[#1F222B] transition-colors cursor-pointer ${
+                        theme === 'dark' ? 'text-blue-400 font-semibold bg-[#1F222B]/50' : 'text-gray-300'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Moon className="w-3.5 h-3.5 text-blue-400" />
+                        Темная (Elegance)
+                      </span>
+                      {theme === 'dark' && <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />}
+                    </button>
+
+                    <button
+                      id="theme-option-system"
+                      onClick={() => {
+                        onThemeChange('system');
+                        setThemeMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-[#1F222B] transition-colors cursor-pointer ${
+                        theme === 'system' ? 'text-blue-400 font-semibold bg-[#1F222B]/50' : 'text-gray-300'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Laptop className="w-3.5 h-3.5 text-gray-400" />
+                        Системная
+                      </span>
+                      {theme === 'system' && <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />}
+                    </button>
                   </div>
-                  <button
-                    onClick={() => {
-                      onThemeChange('light');
-                      setThemeMenuOpen(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-[#1F222B] transition-colors ${
-                      theme === 'light' ? 'text-blue-400 font-semibold' : 'text-gray-300'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <Sun className="w-3.5 h-3.5 text-amber-400" />
-                      Светлая
-                    </span>
-                    {theme === 'light' && <CheckCircle2 className="w-3.5 h-3.5" />}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      onThemeChange('dark');
-                      setThemeMenuOpen(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-[#1F222B] transition-colors ${
-                      theme === 'dark' ? 'text-blue-400 font-semibold' : 'text-gray-300'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <Moon className="w-3.5 h-3.5 text-blue-400" />
-                      Elegant Dark
-                    </span>
-                    {theme === 'dark' && <CheckCircle2 className="w-3.5 h-3.5" />}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      onThemeChange('system');
-                      setThemeMenuOpen(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-[#1F222B] transition-colors ${
-                      theme === 'system' ? 'text-blue-400 font-semibold' : 'text-gray-300'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <Laptop className="w-3.5 h-3.5 text-gray-400" />
-                      Системная
-                    </span>
-                    {theme === 'system' && <CheckCircle2 className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
+                </>
               )}
             </div>
 

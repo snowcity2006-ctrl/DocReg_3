@@ -18,9 +18,11 @@ export function useTheme() {
       if (isDark) {
         root.classList.add('dark');
         root.classList.add('dark-elegance');
+        root.style.colorScheme = 'dark';
       } else {
         root.classList.remove('dark');
         root.classList.remove('dark-elegance');
+        root.style.colorScheme = 'light';
       }
     };
 

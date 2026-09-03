@@ -1,37 +1,156 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
+    --bg-canvas: #f8fafc;
+    --bg-surface: #ffffff;
+    --bg-subsurface: #f1f5f9;
+    --bg-elevated: #f1f5f9;
+    --bg-hover: #e2e8f0;
+    --border-color: #e2e8f0;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    color-scheme: light;
+  }
+
+  html.dark, :root.dark {
     --bg-canvas: #0F1115;
     --bg-surface: #171A21;
+    --bg-subsurface: #12151B;
     --bg-elevated: #1F222B;
+    --bg-hover: #2D3139;
     --border-color: #2D3139;
     --text-primary: #E0E0E0;
+    --text-secondary: #D1D5DB;
     --text-muted: #9CA3AF;
+    color-scheme: dark;
   }
 
   body {
-    background-color: #0F1115;
-    color: #E0E0E0;
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 }
 
-/* Custom sleek scrollbar for Elegant Dark */
+/* ==========================================================================
+   Светлая тема (Light Mode Overrides):
+   Когда класс .dark снят с <html>, цвета автоматически адаптируются к
+   светлой корпоративной палитре: чистый белый фон карточек, мягкие границы,
+   высококонтрастный текст и четкие инпуты.
+   ========================================================================== */
+html:not(.dark) {
+  color-scheme: light;
+}
+
+html:not(.dark) .bg-\[\#0F1115\] {
+  background-color: #f8fafc !important;
+}
+
+html:not(.dark) input.bg-\[\#0F1115\],
+html:not(.dark) select.bg-\[\#0F1115\],
+html:not(.dark) textarea.bg-\[\#0F1115\] {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+html:not(.dark) input.bg-\[\#0F1115\]::placeholder,
+html:not(.dark) textarea.bg-\[\#0F1115\]::placeholder {
+  color: #94a3b8 !important;
+}
+
+html:not(.dark) .bg-\[\#12151B\],
+html:not(.dark) .bg-\[\#12151B\]\/60 {
+  background-color: #f1f5f9 !important;
+}
+
+html:not(.dark) .bg-\[\#171A21\] {
+  background-color: #ffffff !important;
+}
+
+html:not(.dark) .bg-\[\#1F222B\] {
+  background-color: #f1f5f9 !important;
+}
+
+html:not(.dark) .hover\:bg-\[\#1F222B\]:hover {
+  background-color: #e2e8f0 !important;
+}
+
+html:not(.dark) .hover\:bg-\[\#2D3139\]:hover {
+  background-color: #e2e8f0 !important;
+}
+
+html:not(.dark) .bg-\[\#2D3139\] {
+  background-color: #e2e8f0 !important;
+}
+
+html:not(.dark) .border-\[\#2D3139\],
+html:not(.dark) .border-\[\#2D3139\]\/60,
+html:not(.dark) .border-\[\#2D3139\]\/80 {
+  border-color: #e2e8f0 !important;
+}
+
+html:not(.dark) .text-\[\#E0E0E0\] {
+  color: #0f172a !important;
+}
+
+html:not(.dark) .text-gray-400 {
+  color: #64748b !important;
+}
+
+html:not(.dark) .text-gray-300 {
+  color: #334155 !important;
+}
+
+html:not(.dark) .text-gray-200 {
+  color: #1e293b !important;
+}
+
+html:not(.dark) .hover\:text-white:hover,
+html:not(.dark) .hover\:text-\[\#E0E0E0\]:hover {
+  color: #0f172a !important;
+}
+
+html:not(.dark) option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+html:not(.dark) .shadow-xs,
+html:not(.dark) .shadow-sm {
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05) !important;
+}
+
+html:not(.dark) .shadow-md {
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.05) !important;
+}
+
+html:not(.dark) .shadow-xl,
+html:not(.dark) .shadow-2xl {
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.06) !important;
+}
+
+/* Custom sleek scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0F1115;
+  background: var(--bg-canvas);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2D3139;
+  background: var(--border-color);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3F4450;
+  background: var(--text-muted);
 }
+
