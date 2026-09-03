@@ -41,10 +41,8 @@ jobs:
         run: npx @electron/rebuild -f -w better-sqlite3 || true
 
       - name: Сборка Linux пакетов (AppImage и DEB для Astra Linux)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npx electron-builder --linux AppImage deb --x64
+          npx electron-builder --linux AppImage deb --x64 -p never
           chmod +x release/*.AppImage
           cd release
           tar -czvf docflow-portable-astra-linux.tar.gz *.AppImage
@@ -95,9 +93,7 @@ jobs:
         run: npm run build:electron
 
       - name: Сборка Windows Portable EXE
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --win portable --x64
+        run: npx electron-builder --win portable --x64 -p never
 
       - name: Загрузка Windows Portable в артефакты сборки
         uses: actions/upload-artifact@v4

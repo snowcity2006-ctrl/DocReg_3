@@ -3,6 +3,10 @@
   "private": true,
   "version": "1.0.0",
   "description": "Портативная система учета документооборота организации для Astra Linux и Windows",
+  "author": {
+    "name": "DocFlow Team",
+    "email": "support@docflow.local"
+  },
   "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
@@ -63,6 +67,7 @@
         "AppImage",
         "deb"
       ],
+      "maintainer": "DocFlow Team <support@docflow.local>",
       "category": "Office",
       "executableName": "docflow-portable",
       "executableArgs": [
@@ -78,7 +83,11 @@
         "Categories": "Office;"
       },
       "synopsis": "Система учета документооборота организации",
-      "description": "Портативная система учета документооборота с многопользовательской базой данных SQLite на сетевом диске для Astra Linux и Windows"
+      "description": "Портативная система учета документооборота с многопользовательской базой данных SQLite на сетевом диске для Astra Linux и Windows",
+      "deb": {
+        "priority": "optional",
+        "packageCategory": "office"
+      }
     },
     "win": {
       "target": [
