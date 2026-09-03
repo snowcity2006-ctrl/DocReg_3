@@ -8,11 +8,11 @@
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
-    "build:electron": "esbuild electron/main.ts --bundle --platform=node --target=node20 --outfile=dist-electron/main.js --external:electron --external:better-sqlite3 && esbuild electron/preload.ts --bundle --platform=node --target=node20 --outfile=dist-electron/preload.js --external:electron",
+    "build:electron": "esbuild electron/main.ts --bundle --platform=node --target=node18 --outfile=dist-electron/main.js --external:electron --external:better-sqlite3 && esbuild electron/preload.ts --bundle --platform=node --target=node18 --outfile=dist-electron/preload.js --external:electron",
     "preview": "vite preview",
     "clean": "rm -rf dist dist-electron release server.js",
     "lint": "tsc --noEmit",
-    "pack:linux": "npm run build && npm run build:electron && electron-builder --linux AppImage",
+    "pack:linux": "npm run build && npm run build:electron && electron-builder --linux AppImage deb",
     "pack:win": "npm run build && npm run build:electron && electron-builder --win portable",
     "pack": "npm run build && npm run build:electron && electron-builder"
   },
@@ -35,7 +35,7 @@
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
     "better-sqlite3": "^11.8.1",
-    "electron": "^29.4.6",
+    "electron": "28.3.3",
     "electron-builder": "^24.13.3",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",
@@ -60,10 +60,23 @@
     ],
     "linux": {
       "target": [
-        "AppImage"
+        "AppImage",
+        "deb"
       ],
       "category": "Office",
       "executableName": "docflow-portable",
+      "executableArgs": [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-gpu-sandbox",
+        "--disable-dev-shm-usage"
+      ],
+      "desktop": {
+        "Name": "DocFlow",
+        "Type": "Application",
+        "Terminal": "false",
+        "Categories": "Office;"
+      },
       "synopsis": "Система учета документооборота организации",
       "description": "Портативная система учета документооборота с многопользовательской базой данных SQLite на сетевом диске для Astra Linux и Windows"
     },

@@ -21,6 +21,11 @@ if (process.platform === 'linux') {
   // Отключение аппаратного ускорения при отсутствии драйверов в сертифицированных сборках
   app.commandLine.appendSwitch('disable-gpu-sandbox');
   app.commandLine.appendSwitch('disable-dev-shm-usage');
+  app.commandLine.appendSwitch('disable-software-rasterizer');
+  // Предотвращает падение Chromium GPU-процесса в Astra Linux без проприетарных драйверов
+  try {
+    app.disableHardwareAcceleration();
+  } catch {}
 }
 app.commandLine.appendSwitch('disable-gpu-process-crash-limit');
 
