@@ -82,12 +82,12 @@
         "Terminal": "false",
         "Categories": "Office;"
       },
+      "packageCategory": "office",
       "synopsis": "Система учета документооборота организации",
-      "description": "Портативная система учета документооборота с многопользовательской базой данных SQLite на сетевом диске для Astra Linux и Windows",
-      "deb": {
-        "priority": "optional",
-        "packageCategory": "office"
-      }
+      "description": "Портативная система учета документооборота с многопользовательской базой данных SQLite на сетевом диске для Astra Linux и Windows"
+    },
+    "deb": {
+      "priority": "optional"
     },
     "win": {
       "target": [
