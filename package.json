@@ -8,12 +8,12 @@
     "email": "support@docflow.local"
   },
   "homepage": "https://github.com/docreg/docflow",
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
-    "build:electron": "esbuild electron/main.ts --bundle --platform=node --target=node18 --outfile=dist-electron/main.js --external:electron --external:better-sqlite3 && esbuild electron/preload.ts --bundle --platform=node --target=node18 --outfile=dist-electron/preload.js --external:electron",
+    "build:electron": "esbuild electron/main.ts --bundle --platform=node --target=node18 --outfile=dist-electron/main.cjs --external:electron --external:better-sqlite3 && esbuild electron/preload.ts --bundle --platform=node --target=node18 --outfile=dist-electron/preload.cjs --external:electron",
     "preview": "vite preview",
     "clean": "rm -rf dist dist-electron release server.js",
     "lint": "tsc --noEmit",
@@ -57,8 +57,9 @@
     },
     "files": [
       "dist/**/*",
-      "dist-electron/main.js",
-      "dist-electron/preload.js",
+      "dist-electron/main.cjs",
+      "dist-electron/preload.cjs",
+      "dist-electron/**/*",
       "package.json"
     ],
     "asar": true,
