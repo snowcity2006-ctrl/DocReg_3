@@ -9,6 +9,7 @@ interface EmployeeModalProps {
   departments: Department[];
   organizations: Organization[];
   onOpenNewOrgModal: () => void;
+  onOpenNewDepartmentModal: (orgId?: number) => void;
   initialData?: Employee | null;
 }
 
@@ -19,6 +20,7 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
   departments,
   organizations,
   onOpenNewOrgModal,
+  onOpenNewDepartmentModal,
   initialData,
 }) => {
   const [fullName, setFullName] = useState('');
@@ -27,19 +29,34 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Сброс и инициализация полей формы
   useEffect(() => {
+    if (!isOpen) return;
     if (initialData) {
       setFullName(initialData.fullName || '');
       setDepartmentShortName(initialData.departmentShortName || '');
       setOrganizationId(initialData.organizationId || '');
     } else {
       setFullName('');
-      setOrganizationId(organizations.length > 0 ? organizations[0].id : '');
-      const filteredDepts = departments.filter((d) => !organizations[0] || d.organizationId === organizations[0]?.id);
+      const firstOrgId = organizations.length > 0 ? organizations[0].id : '';
+      setOrganizationId(firstOrgId);
+      const filteredDepts = departments.filter((d) => !firstOrgId || d.organizationId === firstOrgId);
       setDepartmentShortName(filteredDepts.length > 0 ? filteredDepts[0].shortName : '');
     }
     setError(null);
-  }, [initialData, isOpen, organizations, departments]);
+  }, [initialData, isOpen]);
+
+  // Автоматический выбор вновь добавленного подразделения без сброса введенного ФИО
+  const prevDeptsLengthRef = React.useRef(departments.length);
+  useEffect(() => {
+    if (isOpen && departments.length > prevDeptsLengthRef.current) {
+      const latestDept = departments[departments.length - 1];
+      if (latestDept && (!organizationId || latestDept.organizationId === Number(organizationId))) {
+        setDepartmentShortName(latestDept.shortName);
+      }
+    }
+    prevDeptsLengthRef.current = departments.length;
+  }, [departments, isOpen, organizationId]);
 
   // Фильтрация подразделений по выбранной организации
   const availableDepartments = departments.filter((d) => !organizationId || d.organizationId === Number(organizationId));
@@ -174,39 +191,50 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
             </div>
           </div>
 
-          {/* Структурное подразделение (заполняется из Сокращенное название СП) */}
+          {/* Структурное подразделение (заполняется из Сокращенное название СП) с кнопкой '+' */}
           <div>
             <label className="block text-xs font-semibold text-gray-300 mb-1.5">
               Структурное подразделение (Сокращенное СП) <span className="text-rose-500">*</span>
             </label>
-            {availableDepartments.length > 0 ? (
-              <select
-                required
-                value={departmentShortName}
-                onChange={(e) => setDepartmentShortName(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="" className="bg-[#171A21] text-gray-400">-- Выберите СП --</option>
-                {availableDepartments.map((dept) => (
-                  <option key={dept.id} value={dept.shortName} className="bg-[#171A21] text-[#E0E0E0]">
-                    {dept.shortName} — {dept.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div className="space-y-1">
+            <div className="flex gap-2">
+              {availableDepartments.length > 0 ? (
+                <select
+                  required
+                  value={departmentShortName}
+                  onChange={(e) => setDepartmentShortName(e.target.value)}
+                  className="flex-1 px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] focus:outline-none focus:ring-1 focus:ring-blue-500 truncate"
+                >
+                  <option value="" className="bg-[#171A21] text-gray-400">-- Выберите СП --</option>
+                  {availableDepartments.map((dept) => (
+                    <option key={dept.id} value={dept.shortName} className="bg-[#171A21] text-[#E0E0E0]" title={`${dept.shortName} — ${dept.name}`}>
+                      {dept.shortName} — {dept.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
                 <input
                   type="text"
                   required
                   value={departmentShortName}
                   onChange={(e) => setDepartmentShortName(e.target.value)}
                   placeholder="Введите сокращенное название СП (например: ОЗИ)"
-                  className="w-full px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
+                  className="flex-1 px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
                 />
-                <p className="text-[11px] text-amber-400">
-                  Для выбранной организации нет подразделений в справочнике. Можно указать сокращение вручную.
-                </p>
-              </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => onOpenNewDepartmentModal(organizationId ? Number(organizationId) : undefined)}
+                title="Добавить новое структурное подразделение в справочник"
+                className="p-2.5 bg-blue-950/80 hover:bg-blue-900 text-blue-400 rounded-xl border border-blue-800 transition-colors cursor-pointer flex items-center justify-center shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+            {availableDepartments.length === 0 && (
+              <p className="text-[11px] text-amber-400 mt-1">
+                Для выбранной организации нет подразделений в справочнике. Нажмите «+» для добавления в справочник или укажите сокращение вручную.
+              </p>
             )}
           </div>
 

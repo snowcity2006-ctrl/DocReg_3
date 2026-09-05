@@ -80,6 +80,7 @@ export default function App() {
   // Быстрое добавление справочников из модалок
   const [quickOrgModalOpen, setQuickOrgModalOpen] = useState(false);
   const [quickDeptModalOpen, setQuickDeptModalOpen] = useState(false);
+  const [quickDeptInitialOrgId, setQuickDeptInitialOrgId] = useState<number | undefined>(undefined);
   const [quickEmpModalOpen, setQuickEmpModalOpen] = useState(false);
   const [quickDocTypeModalOpen, setQuickDocTypeModalOpen] = useState(false);
   const [quickDirectionModalOpen, setQuickDirectionModalOpen] = useState(false);
@@ -525,13 +526,18 @@ export default function App() {
       {/* Быстрое добавление структурного подразделения */}
       <DepartmentModal
         isOpen={quickDeptModalOpen}
-        onClose={() => setQuickDeptModalOpen(false)}
+        onClose={() => {
+          setQuickDeptModalOpen(false);
+          setQuickDeptInitialOrgId(undefined);
+        }}
         organizations={organizations}
         existingDepartments={departments}
+        defaultOrganizationId={quickDeptInitialOrgId}
         onOpenNewOrgModal={() => setQuickOrgModalOpen(true)}
         onSave={async (deptData) => {
           await handleSaveDept(deptData);
           setQuickDeptModalOpen(false);
+          setQuickDeptInitialOrgId(undefined);
         }}
       />
 
@@ -542,6 +548,10 @@ export default function App() {
         departments={departments}
         organizations={organizations}
         onOpenNewOrgModal={() => setQuickOrgModalOpen(true)}
+        onOpenNewDepartmentModal={(orgId) => {
+          setQuickDeptInitialOrgId(orgId);
+          setQuickDeptModalOpen(true);
+        }}
         onSave={async (empData) => {
           await handleSaveEmp(empData);
           setQuickEmpModalOpen(false);

@@ -73,6 +73,7 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
   const [deptModalOpen, setDeptModalOpen] = useState(false);
   const [selectedDept, setSelectedDept] = useState<Department | null>(null);
+  const [deptInitialOrgId, setDeptInitialOrgId] = useState<number | undefined>(undefined);
 
   const [empModalOpen, setEmpModalOpen] = useState(false);
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
@@ -720,14 +721,22 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
       <DepartmentModal
         isOpen={deptModalOpen}
-        onClose={() => setDeptModalOpen(false)}
-        onSave={onSaveDept}
+        onClose={() => {
+          setDeptModalOpen(false);
+          setSelectedDept(null);
+          setDeptInitialOrgId(undefined);
+        }}
+        onSave={async (deptData) => {
+          await onSaveDept(deptData);
+          setDeptInitialOrgId(undefined);
+        }}
         organizations={organizations}
         onOpenNewOrgModal={() => {
           setSelectedOrg(null);
           setOrgModalOpen(true);
         }}
         initialData={selectedDept}
+        defaultOrganizationId={deptInitialOrgId}
         existingDepartments={departments}
       />
 
@@ -740,6 +749,11 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
         onOpenNewOrgModal={() => {
           setSelectedOrg(null);
           setOrgModalOpen(true);
+        }}
+        onOpenNewDepartmentModal={(orgId) => {
+          setSelectedDept(null);
+          setDeptInitialOrgId(orgId);
+          setDeptModalOpen(true);
         }}
         initialData={selectedEmp}
       />
