@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, X, Check, AlertCircle } from 'lucide-react';
+import { Building2, X, Check, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Organization } from '../../types';
 
 interface OrganizationModalProps {
@@ -7,6 +7,8 @@ interface OrganizationModalProps {
   onClose: () => void;
   onSave: (org: Omit<Organization, 'id'> & { id?: number }) => Promise<void>;
   initialData?: Organization | null;
+  existingOrganizations?: Organization[];
+  organizations?: Organization[];
 }
 
 export const OrganizationModal: React.FC<OrganizationModalProps> = ({
@@ -14,12 +16,16 @@ export const OrganizationModal: React.FC<OrganizationModalProps> = ({
   onClose,
   onSave,
   initialData,
+  existingOrganizations,
+  organizations,
 }) => {
   const [name, setName] = useState('');
   const [director, setDirector] = useState('');
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const orgList = existingOrganizations || organizations || [];
 
   useEffect(() => {
     if (initialData) {
@@ -34,10 +40,23 @@ export const OrganizationModal: React.FC<OrganizationModalProps> = ({
     setError(null);
   }, [initialData, isOpen]);
 
+  const normalizedName = name.trim().toLowerCase();
+
+  // Поиск дубликата среди существующих организаций (исключая редактируемую запись)
+  const duplicateOrg = orgList.find(
+    (o) => o.id !== initialData?.id && o.name.trim().toLowerCase() === normalizedName
+  );
+  const isDuplicate = Boolean(normalizedName && duplicateOrg);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       setError('Поле «Организация» обязательно для заполнения');
+      return;
+    }
+
+    if (isDuplicate) {
+      setError(`Организация «${duplicateOrg?.name}» уже существует в справочнике. Дублирование запрещено.`);
       return;
     }
 
@@ -75,9 +94,14 @@ export const OrganizationModal: React.FC<OrganizationModalProps> = ({
             <div className="w-8 h-8 rounded-lg bg-blue-950/80 text-blue-400 flex items-center justify-center border border-blue-900/60">
               <Building2 className="w-4 h-4" />
             </div>
-            <h3 className="text-base font-bold text-[#E0E0E0]">
-              {initialData ? 'Редактирование организации' : 'Новая организация'}
-            </h3>
+            <div>
+              <h3 className="text-base font-bold text-[#E0E0E0]">
+                {initialData ? 'Редактирование организации' : 'Новая организация'}
+              </h3>
+              <p className="text-[11px] text-gray-400">
+                {initialData ? 'Изменение реквизитов организации' : 'Добавление новой организации в справочник'}
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -93,6 +117,18 @@ export const OrganizationModal: React.FC<OrganizationModalProps> = ({
             <div className="p-3 bg-rose-950/50 border border-rose-900/60 rounded-xl text-xs text-rose-300 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
+            </div>
+          )}
+
+          {isDuplicate && (
+            <div className="p-3 bg-amber-950/40 border border-amber-800/60 rounded-xl text-xs text-amber-300 flex items-start gap-2.5 animate-in fade-in">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+              <div>
+                <span className="font-semibold">Внимание: организация уже существует!</span>
+                <p className="mt-0.5 text-[11px] text-amber-200/90 leading-relaxed">
+                  Организация с наименованием «<strong className="text-amber-100">{duplicateOrg?.name}</strong>» (ID: #{duplicateOrg?.id}) уже зарегистрирована в справочнике. Повторное создание запрещено.
+                </p>
+              </div>
             </div>
           )}
 
@@ -118,10 +154,72 @@ export const OrganizationModal: React.FC<OrganizationModalProps> = ({
               type="text"
               required
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (error) setError(null);
+              }}
               placeholder="Например: АО «НПО РусБИТех»"
-              className="w-full px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`w-full px-3.5 py-2.5 bg-[#0F1115] border ${
+                isDuplicate
+                  ? 'border-amber-500/80 focus:border-amber-500 ring-1 ring-amber-500/20'
+                  : 'border-[#2D3139] focus:ring-1 focus:ring-blue-500'
+              } rounded-xl text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none transition-all`}
             />
+          </div>
+
+          {/* Блок информации об уже существующих организациях */}
+          <div className="bg-[#0F1115] border border-[#2D3139] rounded-xl p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-3.5 h-3.5 text-blue-400" />
+                <span className="text-xs font-semibold text-gray-300">
+                  Существующие организации
+                </span>
+              </div>
+              <span className="text-[11px] px-2 py-0.5 bg-blue-950/80 text-blue-400 border border-blue-900/60 rounded-md font-medium">
+                Всего в базе: {orgList.length}
+              </span>
+            </div>
+
+            {orgList.length === 0 ? (
+              <div className="text-xs text-gray-500 italic py-1">
+                В справочнике пока нет зарегистрированных организаций.
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                  {orgList.map((o) => {
+                    const isExactMatch = normalizedName && o.name.trim().toLowerCase() === normalizedName;
+                    const isPartialMatch =
+                      normalizedName &&
+                      !isExactMatch &&
+                      o.name.trim().toLowerCase().includes(normalizedName);
+
+                    return (
+                      <span
+                        key={o.id}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                          isExactMatch
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 ring-1 ring-amber-500/30 font-semibold'
+                            : isPartialMatch
+                            ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                            : 'bg-[#171A21] text-gray-300 border border-[#2D3139]'
+                        }`}
+                      >
+                        <span>{o.name}</span>
+                        <span className="text-[10px] text-gray-500">#{o.id}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+                {normalizedName && !isDuplicate && (
+                  <p className="text-[11px] text-emerald-400/90 flex items-center gap-1 pt-1">
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Наименование «{name.trim()}» свободно для создания</span>
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div>
@@ -160,8 +258,9 @@ export const OrganizationModal: React.FC<OrganizationModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={saving}
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-xs shadow-blue-500/30 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              disabled={saving || isDuplicate || !name.trim()}
+              title={isDuplicate ? 'Организация с таким наименованием уже существует' : undefined}
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-xs shadow-blue-500/30 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Check className="w-3.5 h-3.5" />
               <span>{saving ? 'Сохранение...' : 'Сохранить'}</span>

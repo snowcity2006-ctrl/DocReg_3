@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Network, X, Check, AlertCircle, Plus } from 'lucide-react';
+import { Network, X, Check, AlertCircle, AlertTriangle, Plus, Building2 } from 'lucide-react';
 import { Department, Organization } from '../../types';
 
 interface DepartmentModalProps {
@@ -9,6 +9,8 @@ interface DepartmentModalProps {
   organizations: Organization[];
   onOpenNewOrgModal: () => void;
   initialData?: Department | null;
+  existingDepartments?: Department[];
+  departments?: Department[];
 }
 
 export const DepartmentModal: React.FC<DepartmentModalProps> = ({
@@ -18,12 +20,16 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({
   organizations,
   onOpenNewOrgModal,
   initialData,
+  existingDepartments,
+  departments,
 }) => {
   const [name, setName] = useState('');
   const [shortName, setShortName] = useState('');
   const [organizationId, setOrganizationId] = useState<number | ''>('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const allDepartments = existingDepartments || departments || [];
 
   useEffect(() => {
     if (initialData) {
@@ -38,6 +44,28 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({
     setError(null);
   }, [initialData, isOpen, organizations]);
 
+  const selectedOrg = organizations.find((o) => o.id === Number(organizationId));
+  
+  // Подразделения, привязанные именно к выбранной организации
+  const orgDepartments = organizationId
+    ? allDepartments.filter((d) => d.organizationId === Number(organizationId))
+    : [];
+
+  const normalizedName = name.trim().toLowerCase();
+  const normalizedShortName = shortName.trim().toUpperCase();
+
+  // Поиск дубликата в выбранной организации (по полному названию или сокращению)
+  const duplicateByName = orgDepartments.find(
+    (d) => d.id !== initialData?.id && d.name.trim().toLowerCase() === normalizedName
+  );
+  const duplicateByShortName = orgDepartments.find(
+    (d) => d.id !== initialData?.id && d.shortName.trim().toUpperCase() === normalizedShortName
+  );
+
+  const isDuplicate = Boolean(
+    (normalizedName && duplicateByName) || (normalizedShortName && duplicateByShortName)
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -50,6 +78,20 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({
     }
     if (!organizationId) {
       setError('Поле «Организация» обязательно для заполнения');
+      return;
+    }
+
+    if (duplicateByName) {
+      setError(
+        `Подразделение с наименованием «${duplicateByName.name}» уже существует в организации «${selectedOrg?.name}». Дублирование запрещено.`
+      );
+      return;
+    }
+
+    if (duplicateByShortName) {
+      setError(
+        `Подразделение с сокращением «${duplicateByShortName.shortName}» (${duplicateByShortName.name}) уже существует в организации «${selectedOrg?.name}». Дублирование запрещено.`
+      );
       return;
     }
 
@@ -82,9 +124,14 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({
             <div className="w-8 h-8 rounded-lg bg-blue-950/80 text-blue-400 flex items-center justify-center border border-blue-900/60">
               <Network className="w-4 h-4" />
             </div>
-            <h3 className="text-base font-bold text-[#E0E0E0]">
-              {initialData ? 'Редактирование подразделения' : 'Новое структурное подразделение'}
-            </h3>
+            <div>
+              <h3 className="text-base font-bold text-[#E0E0E0]">
+                {initialData ? 'Редактирование подразделения' : 'Новое структурное подразделение'}
+              </h3>
+              <p className="text-[11px] text-gray-400">
+                {initialData ? 'Изменение данных подразделения' : 'Добавление подразделения в выбранную организацию'}
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -103,6 +150,27 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({
             </div>
           )}
 
+          {isDuplicate && (
+            <div className="p-3 bg-amber-950/40 border border-amber-800/60 rounded-xl text-xs text-amber-300 flex items-start gap-2.5 animate-in fade-in">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+              <div>
+                <span className="font-semibold">Внимание: подразделение уже существует в этой организации!</span>
+                <p className="mt-0.5 text-[11px] text-amber-200/90 leading-relaxed">
+                  {duplicateByName ? (
+                    <>
+                      Подразделение «<strong className="text-amber-100">{duplicateByName.name}</strong>» ({duplicateByName.shortName}, ID: #{duplicateByName.id}) уже есть в организации «{selectedOrg?.name}».
+                    </>
+                  ) : (
+                    <>
+                      Сокращение «<strong className="text-amber-100">{duplicateByShortName?.shortName}</strong>» уже используется для «{duplicateByShortName?.name}» в организации «{selectedOrg?.name}».
+                    </>
+                  )}
+                  {' '}Повторное создание дубликата запрещено.
+                </p>
+              </div>
+            </div>
+          )}
+
           {initialData && (
             <div>
               <label className="block text-xs font-semibold text-gray-400 mb-1">
@@ -117,6 +185,40 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({
             </div>
           )}
 
+          {/* Организация с иконкой '+' справа */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+              Организация <span className="text-rose-500">*</span>
+            </label>
+            <div className="flex gap-2">
+              <select
+                required
+                value={organizationId}
+                onChange={(e) => {
+                  setOrganizationId(e.target.value ? Number(e.target.value) : '');
+                  if (error) setError(null);
+                }}
+                className="flex-1 px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="" className="bg-[#171A21] text-gray-400">-- Выберите организацию --</option>
+                {organizations.map((org) => (
+                  <option key={org.id} value={org.id} className="bg-[#171A21] text-[#E0E0E0]">
+                    {org.name}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={onOpenNewOrgModal}
+                title="Добавить новую организацию в справочник"
+                className="p-2.5 bg-blue-950/80 hover:bg-blue-900 text-blue-400 rounded-xl border border-blue-800 transition-colors cursor-pointer flex items-center justify-center shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-gray-300 mb-1.5">
               Структурное подразделение <span className="text-rose-500">*</span>
@@ -125,9 +227,16 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({
               type="text"
               required
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (error) setError(null);
+              }}
               placeholder="Например: Отдел информационной безопасности"
-              className="w-full px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={`w-full px-3.5 py-2.5 bg-[#0F1115] border ${
+                duplicateByName
+                  ? 'border-amber-500/80 focus:border-amber-500 ring-1 ring-amber-500/20'
+                  : 'border-[#2D3139] focus:ring-1 focus:ring-blue-500'
+              } rounded-xl text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none transition-all`}
             />
           </div>
 
@@ -139,42 +248,82 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({
               type="text"
               required
               value={shortName}
-              onChange={(e) => setShortName(e.target.value)}
+              onChange={(e) => {
+                setShortName(e.target.value);
+                if (error) setError(null);
+              }}
               placeholder="Например: ОИБ"
-              className="w-full px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold uppercase"
+              className={`w-full px-3.5 py-2.5 bg-[#0F1115] border ${
+                duplicateByShortName
+                  ? 'border-amber-500/80 focus:border-amber-500 ring-1 ring-amber-500/20'
+                  : 'border-[#2D3139] focus:ring-1 focus:ring-blue-500'
+              } rounded-xl text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none transition-all font-semibold uppercase`}
             />
           </div>
 
-          {/* Организация с иконкой '+' справа по ТЗ */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-              Организация <span className="text-rose-500">*</span>
-            </label>
-            <div className="flex gap-2">
-              <select
-                required
-                value={organizationId}
-                onChange={(e) => setOrganizationId(e.target.value ? Number(e.target.value) : '')}
-                className="flex-1 px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="" className="bg-[#171A21] text-gray-400">-- Выберите организацию --</option>
-                {organizations.map((org) => (
-                  <option key={org.id} value={org.id} className="bg-[#171A21] text-[#E0E0E0]">
-                    {org.name}
-                  </option>
-                ))}
-              </select>
-
-              {/* Иконка «+» справа от поля для добавления новой организации по ТЗ */}
-              <button
-                type="button"
-                onClick={onOpenNewOrgModal}
-                title="Добавить новую организацию в справочник"
-                className="p-2.5 bg-blue-950/80 hover:bg-blue-900 text-blue-400 rounded-xl border border-blue-800 transition-colors cursor-pointer flex items-center justify-center shrink-0"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
+          {/* Блок информации об уже существующих структурных подразделениях в выбранной организации */}
+          <div className="bg-[#0F1115] border border-[#2D3139] rounded-xl p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Network className="w-3.5 h-3.5 text-blue-400" />
+                <span className="text-xs font-semibold text-gray-300">
+                  Существующие СП в выбранной организации
+                </span>
+              </div>
+              {selectedOrg && (
+                <span className="text-[11px] px-2 py-0.5 bg-blue-950/80 text-blue-400 border border-blue-900/60 rounded-md font-medium truncate max-w-[200px]" title={selectedOrg.name}>
+                  {selectedOrg.name}: {orgDepartments.length}
+                </span>
+              )}
             </div>
+
+            {!organizationId ? (
+              <div className="text-xs text-gray-500 italic py-1 flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-gray-600" />
+                <span>Выберите организацию выше для просмотра существующих подразделений</span>
+              </div>
+            ) : orgDepartments.length === 0 ? (
+              <div className="text-xs text-gray-500 italic py-1">
+                В организации «{selectedOrg?.name}» пока нет подразделений — это будет первое.
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                  {orgDepartments.map((d) => {
+                    const isNameMatch = normalizedName && d.name.trim().toLowerCase() === normalizedName;
+                    const isShortMatch = normalizedShortName && d.shortName.trim().toUpperCase() === normalizedShortName;
+                    const isExactMatch = isNameMatch || isShortMatch;
+                    const isPartialMatch =
+                      !isExactMatch &&
+                      ((normalizedName && d.name.trim().toLowerCase().includes(normalizedName)) ||
+                        (normalizedShortName && d.shortName.trim().toUpperCase().includes(normalizedShortName)));
+
+                    return (
+                      <span
+                        key={d.id}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                          isExactMatch
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 ring-1 ring-amber-500/30 font-semibold'
+                            : isPartialMatch
+                            ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                            : 'bg-[#171A21] text-gray-300 border border-[#2D3139]'
+                        }`}
+                      >
+                        <span className="font-semibold text-blue-300">{d.shortName}</span>
+                        <span className="text-gray-400 truncate max-w-[150px]">({d.name})</span>
+                        <span className="text-[10px] text-gray-500">#{d.id}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+                {normalizedName && !isDuplicate && (
+                  <p className="text-[11px] text-emerald-400/90 flex items-center gap-1 pt-1">
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Подразделение свободно для создания в организации «{selectedOrg?.name}»</span>
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="pt-4 border-t border-[#2D3139] flex items-center justify-end gap-2">
@@ -187,8 +336,9 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={saving}
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-xs shadow-blue-500/30 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              disabled={saving || isDuplicate || !name.trim() || !shortName.trim() || !organizationId}
+              title={isDuplicate ? 'Подразделение с такими данными уже существует в организации' : undefined}
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-xs shadow-blue-500/30 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Check className="w-3.5 h-3.5" />
               <span>{saving ? 'Сохранение...' : 'Сохранить'}</span>

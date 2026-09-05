@@ -715,6 +715,7 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
         onClose={() => setOrgModalOpen(false)}
         onSave={onSaveOrg}
         initialData={selectedOrg}
+        existingOrganizations={organizations}
       />
 
       <DepartmentModal
@@ -727,6 +728,7 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
           setOrgModalOpen(true);
         }}
         initialData={selectedDept}
+        existingDepartments={departments}
       />
 
       <EmployeeModal

@@ -515,6 +515,7 @@ export default function App() {
       <OrganizationModal
         isOpen={quickOrgModalOpen}
         onClose={() => setQuickOrgModalOpen(false)}
+        existingOrganizations={organizations}
         onSave={async (orgData) => {
           await handleSaveOrg(orgData);
           setQuickOrgModalOpen(false);
@@ -526,6 +527,7 @@ export default function App() {
         isOpen={quickDeptModalOpen}
         onClose={() => setQuickDeptModalOpen(false)}
         organizations={organizations}
+        existingDepartments={departments}
         onOpenNewOrgModal={() => setQuickOrgModalOpen(true)}
         onSave={async (deptData) => {
           await handleSaveDept(deptData);

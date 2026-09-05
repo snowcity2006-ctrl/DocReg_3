@@ -312,20 +312,30 @@ class WebMockDatabase implements ElectronAPI {
 
   async saveOrganization(org: Omit<Organization, 'id'> & { id?: number }): Promise<Organization> {
     const list = await this.getOrganizations();
+    const cleanName = org.name.trim();
+
+    // Запрет дублирования организации по наименованию (без учета регистра)
+    const isDuplicate = list.some(
+      (o) => o.id !== org.id && o.name.trim().toLowerCase() === cleanName.toLowerCase()
+    );
+    if (isDuplicate) {
+      throw new Error(`Организация «${cleanName}» уже существует в справочнике`);
+    }
+
     let saved: Organization;
     const now = new Date().toISOString();
 
     if (org.id) {
       const idx = list.findIndex((i) => i.id === org.id);
       if (idx === -1) throw new Error('Организация не найдена');
-      saved = { ...list[idx], ...org, updatedAt: now };
+      saved = { ...list[idx], ...org, name: cleanName, updatedAt: now };
       list[idx] = saved;
       await this.addLog('info', 'db', `Обновлена организация: "${saved.name}" (ID: ${saved.id})`);
     } else {
       const newId = list.length > 0 ? Math.max(...list.map((i) => i.id)) + 1 : 1;
       saved = {
         id: newId,
-        name: org.name.trim(),
+        name: cleanName,
         director: org.director?.trim() || '',
         email: org.email?.trim() || '',
         createdAt: now,
@@ -384,6 +394,23 @@ class WebMockDatabase implements ElectronAPI {
     const org = orgs.find((o) => o.id === dept.organizationId);
     if (!org) throw new Error('Выбранная организация не найдена');
 
+    const cleanName = dept.name.trim();
+    const cleanShortName = dept.shortName.trim().toUpperCase();
+
+    // Запрет дублирования структурного подразделения в выбранной организации (по имени или сокращению)
+    const isDuplicate = list.some(
+      (d) =>
+        d.id !== dept.id &&
+        d.organizationId === dept.organizationId &&
+        (d.name.trim().toLowerCase() === cleanName.toLowerCase() ||
+          d.shortName.trim().toUpperCase() === cleanShortName)
+    );
+    if (isDuplicate) {
+      throw new Error(
+        `Структурное подразделение с наименованием «${cleanName}» или сокращением «${cleanShortName}» уже существует в организации «${org.name}»`
+      );
+    }
+
     let saved: Department;
     const now = new Date().toISOString();
 
@@ -393,6 +420,8 @@ class WebMockDatabase implements ElectronAPI {
       saved = {
         ...list[idx],
         ...dept,
+        name: cleanName,
+        shortName: cleanShortName,
         organizationName: org.name,
         updatedAt: now,
       };
@@ -402,8 +431,8 @@ class WebMockDatabase implements ElectronAPI {
       const newId = list.length > 0 ? Math.max(...list.map((i) => i.id)) + 1 : 1;
       saved = {
         id: newId,
-        name: dept.name.trim(),
-        shortName: dept.shortName.trim(),
+        name: cleanName,
+        shortName: cleanShortName,
         organizationId: dept.organizationId,
         organizationName: org.name,
         createdAt: now,
