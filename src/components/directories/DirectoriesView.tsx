@@ -747,6 +747,7 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
         onClose={() => setDocTypeModalOpen(false)}
         onSave={onSaveDocType}
         initialData={selectedDocType}
+        existingTypes={documentTypes}
       />
 
       <DirectionModal
@@ -754,6 +755,7 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
         onClose={() => setDirModalOpen(false)}
         onSave={onSaveDir}
         initialData={selectedDir}
+        existingDirections={directions}
       />
 
       {/* Диалог подтверждения удаления */}

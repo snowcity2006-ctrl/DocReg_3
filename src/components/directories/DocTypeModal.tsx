@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Tag, X, Check, AlertCircle } from 'lucide-react';
+import { Tag, X, Check, AlertCircle, AlertTriangle } from 'lucide-react';
 import { DocumentType } from '../../types';
 
 interface DocTypeModalProps {
@@ -7,6 +7,7 @@ interface DocTypeModalProps {
   onClose: () => void;
   onSave: (type: Omit<DocumentType, 'id'> & { id?: number }) => Promise<void>;
   initialData?: DocumentType | null;
+  existingTypes?: DocumentType[];
 }
 
 export const DocTypeModal: React.FC<DocTypeModalProps> = ({
@@ -14,6 +15,7 @@ export const DocTypeModal: React.FC<DocTypeModalProps> = ({
   onClose,
   onSave,
   initialData,
+  existingTypes = [],
 }) => {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -28,10 +30,23 @@ export const DocTypeModal: React.FC<DocTypeModalProps> = ({
     setError(null);
   }, [initialData, isOpen]);
 
+  const normalizedName = name.trim().toLowerCase();
+
+  // Поиск дубликата среди существующих типов (исключая редактируемую запись)
+  const duplicateType = existingTypes.find(
+    (t) => t.id !== initialData?.id && t.name.trim().toLowerCase() === normalizedName
+  );
+  const isDuplicate = Boolean(normalizedName && duplicateType);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       setError('Поле «Тип документа» обязательно для заполнения');
+      return;
+    }
+
+    if (isDuplicate) {
+      setError(`Тип документа «${duplicateType?.name}» уже существует в справочнике. Дублирование запрещено.`);
       return;
     }
 
@@ -53,8 +68,8 @@ export const DocTypeModal: React.FC<DocTypeModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-[#171A21] rounded-2xl shadow-2xl border border-[#2D3139] w-full max-w-md overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
+      <div className="bg-[#171A21] rounded-2xl shadow-2xl border border-[#2D3139] w-full max-w-lg overflow-hidden flex flex-col">
         
         {/* Заголовок */}
         <div className="px-6 py-4 border-b border-[#2D3139] flex items-center justify-between bg-[#12151B]/60">
@@ -62,9 +77,14 @@ export const DocTypeModal: React.FC<DocTypeModalProps> = ({
             <div className="w-8 h-8 rounded-lg bg-blue-950/80 text-blue-400 flex items-center justify-center border border-blue-900/60">
               <Tag className="w-4 h-4" />
             </div>
-            <h3 className="text-base font-bold text-[#E0E0E0]">
-              {initialData ? 'Редактирование типа документа' : 'Новый тип документа'}
-            </h3>
+            <div>
+              <h3 className="text-base font-bold text-[#E0E0E0]">
+                {initialData ? 'Редактирование типа документа' : 'Новый тип документа'}
+              </h3>
+              <p className="text-[11px] text-gray-400">
+                {initialData ? 'Изменение наименования записи' : 'Добавление новой классификации документов'}
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -80,6 +100,18 @@ export const DocTypeModal: React.FC<DocTypeModalProps> = ({
             <div className="p-3 bg-rose-950/50 border border-rose-900/60 rounded-xl text-xs text-rose-300 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
+            </div>
+          )}
+
+          {isDuplicate && (
+            <div className="p-3 bg-amber-950/40 border border-amber-800/60 rounded-xl text-xs text-amber-300 flex items-start gap-2.5 animate-in fade-in">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+              <div>
+                <span className="font-semibold">Внимание: тип документа уже существует!</span>
+                <p className="mt-0.5 text-[11px] text-amber-200/90 leading-relaxed">
+                  Запись с наименованием «<strong className="text-amber-100">{duplicateType?.name}</strong>» (ID: #{duplicateType?.id}) уже есть в справочнике. Повторное создание запрещено.
+                </p>
+              </div>
             </div>
           )}
 
@@ -105,10 +137,72 @@ export const DocTypeModal: React.FC<DocTypeModalProps> = ({
               type="text"
               required
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Например: Приказ, Служебная записка"
-              className="w-full px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              onChange={(e) => {
+                setName(e.target.value);
+                if (error) setError(null);
+              }}
+              placeholder="Например: Приказ, Служебная записка, Акт"
+              className={`w-full px-3.5 py-2.5 bg-[#0F1115] border ${
+                isDuplicate
+                  ? 'border-amber-500/80 focus:border-amber-500 ring-1 ring-amber-500/20'
+                  : 'border-[#2D3139] focus:ring-1 focus:ring-blue-500'
+              } rounded-xl text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none transition-all`}
             />
+          </div>
+
+          {/* Блок информации об уже существующих типах документов */}
+          <div className="bg-[#0F1115] border border-[#2D3139] rounded-xl p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Tag className="w-3.5 h-3.5 text-blue-400" />
+                <span className="text-xs font-semibold text-gray-300">
+                  Существующие типы документов
+                </span>
+              </div>
+              <span className="text-[11px] px-2 py-0.5 bg-blue-950/80 text-blue-400 border border-blue-900/60 rounded-md font-medium">
+                Всего в базе: {existingTypes.length}
+              </span>
+            </div>
+
+            {existingTypes.length === 0 ? (
+              <div className="text-xs text-gray-500 italic py-1">
+                В справочнике пока нет зарегистрированных типов документов.
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                  {existingTypes.map((t) => {
+                    const isExactMatch = normalizedName && t.name.trim().toLowerCase() === normalizedName;
+                    const isPartialMatch =
+                      normalizedName &&
+                      !isExactMatch &&
+                      t.name.trim().toLowerCase().includes(normalizedName);
+
+                    return (
+                      <span
+                        key={t.id}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                          isExactMatch
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 ring-1 ring-amber-500/30 font-semibold'
+                            : isPartialMatch
+                            ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                            : 'bg-[#171A21] text-gray-300 border border-[#2D3139]'
+                        }`}
+                      >
+                        <span>{t.name}</span>
+                        <span className="text-[10px] text-gray-500">#{t.id}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+                {normalizedName && !isDuplicate && (
+                  <p className="text-[11px] text-emerald-400/90 flex items-center gap-1 pt-1">
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Наименование «{name.trim()}» свободно для создания</span>
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="pt-4 border-t border-[#2D3139] flex items-center justify-end gap-2">
@@ -121,8 +215,9 @@ export const DocTypeModal: React.FC<DocTypeModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={saving}
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-xs shadow-blue-500/30 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              disabled={saving || isDuplicate || !name.trim()}
+              title={isDuplicate ? 'Тип документа с таким наименованием уже существует' : undefined}
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-xs shadow-blue-500/30 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Check className="w-3.5 h-3.5" />
               <span>{saving ? 'Сохранение...' : 'Сохранить'}</span>

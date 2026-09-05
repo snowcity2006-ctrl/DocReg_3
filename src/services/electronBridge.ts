@@ -509,20 +509,30 @@ class WebMockDatabase implements ElectronAPI {
 
   async saveDocumentType(type: Omit<DocumentType, 'id'> & { id?: number }): Promise<DocumentType> {
     const list = await this.getDocumentTypes();
+    const cleanName = type.name.trim();
+
+    // Проверка на дубликат наименования типа документа
+    const isDuplicate = list.some(
+      (item) => item.id !== type.id && item.name.trim().toLowerCase() === cleanName.toLowerCase()
+    );
+    if (isDuplicate) {
+      throw new Error(`Тип документа «${cleanName}» уже существует в справочнике`);
+    }
+
     let saved: DocumentType;
     const now = new Date().toISOString();
 
     if (type.id) {
       const idx = list.findIndex((i) => i.id === type.id);
       if (idx === -1) throw new Error('Тип документа не найден');
-      saved = { ...list[idx], ...type, updatedAt: now };
+      saved = { ...list[idx], ...type, name: cleanName, updatedAt: now };
       list[idx] = saved;
       await this.addLog('info', 'db', `Обновлен тип документа: "${saved.name}" (ID: ${saved.id})`);
     } else {
       const newId = list.length > 0 ? Math.max(...list.map((i) => i.id)) + 1 : 1;
       saved = {
         id: newId,
-        name: type.name.trim(),
+        name: cleanName,
         createdAt: now,
         updatedAt: now,
       };
@@ -558,20 +568,30 @@ class WebMockDatabase implements ElectronAPI {
 
   async saveDirection(dir: Omit<Direction, 'id'> & { id?: number }): Promise<Direction> {
     const list = await this.getDirections();
+    const cleanName = dir.name.trim();
+
+    // Проверка на дубликат наименования направления
+    const isDuplicate = list.some(
+      (item) => item.id !== dir.id && item.name.trim().toLowerCase() === cleanName.toLowerCase()
+    );
+    if (isDuplicate) {
+      throw new Error(`Направление «${cleanName}» уже существует в справочнике`);
+    }
+
     let saved: Direction;
     const now = new Date().toISOString();
 
     if (dir.id) {
       const idx = list.findIndex((i) => i.id === dir.id);
       if (idx === -1) throw new Error('Направление не найдено');
-      saved = { ...list[idx], ...dir, updatedAt: now };
+      saved = { ...list[idx], ...dir, name: cleanName, updatedAt: now };
       list[idx] = saved;
       await this.addLog('info', 'db', `Обновлено направление: "${saved.name}" (ID: ${saved.id})`);
     } else {
       const newId = list.length > 0 ? Math.max(...list.map((i) => i.id)) + 1 : 1;
       saved = {
         id: newId,
-        name: dir.name.trim(),
+        name: cleanName,
         createdAt: now,
         updatedAt: now,
       };

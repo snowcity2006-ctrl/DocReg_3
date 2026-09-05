@@ -36,6 +36,10 @@ import { DocumentFormModal } from './components/documents/DocumentFormModal';
 import { DocumentCardModal } from './components/documents/DocumentCardModal';
 import { DirectoriesView } from './components/directories/DirectoriesView';
 import { OrganizationModal } from './components/directories/OrganizationModal';
+import { DepartmentModal } from './components/directories/DepartmentModal';
+import { EmployeeModal } from './components/directories/EmployeeModal';
+import { DocTypeModal } from './components/directories/DocTypeModal';
+import { DirectionModal } from './components/directories/DirectionModal';
 
 export default function App() {
   const { theme, setTheme } = useTheme();
@@ -73,8 +77,12 @@ export default function App() {
   const [editingDoc, setEditingDoc] = useState<DocumentRecord | null>(null);
   const [viewingDoc, setViewingDoc] = useState<DocumentRecord | null>(null);
 
-  // Быстрое добавление организации из модалок
+  // Быстрое добавление справочников из модалок
   const [quickOrgModalOpen, setQuickOrgModalOpen] = useState(false);
+  const [quickDeptModalOpen, setQuickDeptModalOpen] = useState(false);
+  const [quickEmpModalOpen, setQuickEmpModalOpen] = useState(false);
+  const [quickDocTypeModalOpen, setQuickDocTypeModalOpen] = useState(false);
+  const [quickDirectionModalOpen, setQuickDirectionModalOpen] = useState(false);
 
   // Уведомления (Toasts)
   const [notification, setNotification] = useState<{
@@ -485,6 +493,10 @@ export default function App() {
         departments={departments}
         employees={employees}
         onOpenNewOrgModal={() => setQuickOrgModalOpen(true)}
+        onOpenNewDepartmentModal={() => setQuickDeptModalOpen(true)}
+        onOpenNewEmployeeModal={() => setQuickEmpModalOpen(true)}
+        onOpenNewDocTypeModal={() => setQuickDocTypeModalOpen(true)}
+        onOpenNewDirectionModal={() => setQuickDirectionModalOpen(true)}
         initialData={editingDoc}
       />
 
@@ -506,6 +518,53 @@ export default function App() {
         onSave={async (orgData) => {
           await handleSaveOrg(orgData);
           setQuickOrgModalOpen(false);
+        }}
+      />
+
+      {/* Быстрое добавление структурного подразделения */}
+      <DepartmentModal
+        isOpen={quickDeptModalOpen}
+        onClose={() => setQuickDeptModalOpen(false)}
+        organizations={organizations}
+        onOpenNewOrgModal={() => setQuickOrgModalOpen(true)}
+        onSave={async (deptData) => {
+          await handleSaveDept(deptData);
+          setQuickDeptModalOpen(false);
+        }}
+      />
+
+      {/* Быстрое добавление сотрудника */}
+      <EmployeeModal
+        isOpen={quickEmpModalOpen}
+        onClose={() => setQuickEmpModalOpen(false)}
+        departments={departments}
+        organizations={organizations}
+        onOpenNewOrgModal={() => setQuickOrgModalOpen(true)}
+        onSave={async (empData) => {
+          await handleSaveEmp(empData);
+          setQuickEmpModalOpen(false);
+        }}
+      />
+
+      {/* Быстрое добавление типа документа */}
+      <DocTypeModal
+        isOpen={quickDocTypeModalOpen}
+        onClose={() => setQuickDocTypeModalOpen(false)}
+        existingTypes={documentTypes}
+        onSave={async (typeData) => {
+          await handleSaveDocType(typeData);
+          setQuickDocTypeModalOpen(false);
+        }}
+      />
+
+      {/* Быстрое добавление направления */}
+      <DirectionModal
+        isOpen={quickDirectionModalOpen}
+        onClose={() => setQuickDirectionModalOpen(false)}
+        existingDirections={directions}
+        onSave={async (dirData) => {
+          await handleSaveDir(dirData);
+          setQuickDirectionModalOpen(false);
         }}
       />
 

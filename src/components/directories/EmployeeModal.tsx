@@ -79,7 +79,7 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
       <div className="bg-[#171A21] rounded-2xl shadow-2xl border border-[#2D3139] w-full max-w-lg overflow-hidden flex flex-col">
         
         {/* Заголовок */}
