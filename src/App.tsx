@@ -161,8 +161,12 @@ export default function App() {
       return false;
     }
 
-    if (filters.recipientId !== null && doc.recipientId !== filters.recipientId) {
-      return false;
+    if (filters.recipientId !== null) {
+      const isPrimary = doc.recipientId === filters.recipientId;
+      const isInMulti = Array.isArray(doc.recipientIds) && doc.recipientIds.includes(filters.recipientId);
+      if (!isPrimary && !isInMulti) {
+        return false;
+      }
     }
 
     if (filters.dateFrom) {
@@ -478,6 +482,8 @@ export default function App() {
         documentTypes={documentTypes}
         directions={directions}
         organizations={organizations}
+        departments={departments}
+        employees={employees}
         onOpenNewOrgModal={() => setQuickOrgModalOpen(true)}
         initialData={editingDoc}
       />

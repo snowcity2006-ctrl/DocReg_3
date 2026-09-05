@@ -606,19 +606,63 @@ class WebMockDatabase implements ElectronAPI {
     const docTypes = await this.getDocumentTypes();
     const directions = await this.getDirections();
     const orgs = await this.getOrganizations();
+    const depts = await this.getDepartments();
+    const emps = await this.getEmployees();
 
     return docs.map((doc) => {
       const dt = docTypes.find((t) => t.id === doc.docTypeId);
       const dir = directions.find((d) => d.id === doc.directionId);
       const sender = orgs.find((o) => o.id === doc.senderId);
-      const recipient = orgs.find((o) => o.id === doc.recipientId);
+
+      let senderDepartmentName = doc.senderDepartmentName;
+      if (!senderDepartmentName && doc.senderDepartmentId) {
+        const sDept = depts.find((item) => item.id === doc.senderDepartmentId);
+        if (sDept) senderDepartmentName = sDept.shortName || sDept.name;
+      }
+
+      let senderEmployeeName = doc.senderEmployeeName;
+      if (!senderEmployeeName && doc.senderEmployeeId) {
+        const sEmp = emps.find((item) => item.id === doc.senderEmployeeId);
+        if (sEmp) senderEmployeeName = sEmp.fullName;
+      }
+      
+      let recipientName = '—';
+      const rIds = doc.recipientIds && doc.recipientIds.length > 0
+        ? doc.recipientIds
+        : (doc.recipientId ? [doc.recipientId] : []);
+
+      if (rIds.length > 0) {
+        const names = rIds.map((id) => orgs.find((o) => o.id === id)?.name).filter(Boolean);
+        if (names.length > 0) {
+          recipientName = names.join(', ');
+        }
+      } else if (doc.recipientId) {
+        const recipient = orgs.find((o) => o.id === doc.recipientId);
+        recipientName = recipient ? recipient.name : '—';
+      }
+
+      let recipientDepartmentNames = doc.recipientDepartmentNames;
+      if (!recipientDepartmentNames && doc.recipientDepartmentIds && doc.recipientDepartmentIds.length > 0) {
+        const dNames = doc.recipientDepartmentIds
+          .map((id) => {
+            const d = depts.find((item) => item.id === id);
+            return d ? (d.shortName || d.name) : null;
+          })
+          .filter(Boolean);
+        if (dNames.length > 0) {
+          recipientDepartmentNames = dNames.join(', ');
+        }
+      }
 
       return {
         ...doc,
         docTypeName: dt ? dt.name : '—',
         directionName: dir ? dir.name : '—',
         senderName: sender ? sender.name : '—',
-        recipientName: recipient ? recipient.name : '—',
+        recipientName,
+        recipientIds: rIds,
+        recipientDepartmentIds: doc.recipientDepartmentIds || [],
+        recipientDepartmentNames,
       };
     });
   }
@@ -633,12 +677,27 @@ class WebMockDatabase implements ElectronAPI {
     const now = new Date().toISOString();
     let saved: DocumentRecord;
 
+    const rIds = doc.recipientIds || (doc.recipientId ? [doc.recipientId] : []);
+    const primaryRecipientId = doc.recipientId || (rIds.length > 0 ? rIds[0] : undefined);
+
+    const docToSave = {
+      ...doc,
+      senderDepartmentId: doc.senderDepartmentId || undefined,
+      senderDepartmentName: doc.senderDepartmentName || undefined,
+      senderEmployeeId: doc.senderEmployeeId || undefined,
+      senderEmployeeName: doc.senderEmployeeName || undefined,
+      recipientId: primaryRecipientId,
+      recipientIds: rIds,
+      recipientDepartmentIds: doc.recipientDepartmentIds || [],
+      recipientDepartmentNames: doc.recipientDepartmentNames || undefined,
+    };
+
     if (doc.id) {
       const idx = list.findIndex((i) => i.id === doc.id);
       if (idx === -1) throw new Error('Документ не найден');
       saved = {
         ...list[idx],
-        ...doc,
+        ...docToSave,
         updatedAt: now,
       };
       list[idx] = saved;
@@ -646,7 +705,7 @@ class WebMockDatabase implements ElectronAPI {
     } else {
       const newId = list.length > 0 ? Math.max(...list.map((i) => i.id)) + 1 : 1;
       saved = {
-        ...doc,
+        ...docToSave,
         id: newId,
         createdAt: now,
         updatedAt: now,

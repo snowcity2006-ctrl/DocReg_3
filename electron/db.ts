@@ -182,6 +182,9 @@ class SQLiteDatabaseManager {
         subject TEXT NOT NULL,
         sender_id INTEGER,
         recipient_id INTEGER,
+        recipient_ids TEXT,
+        recipient_dept_ids TEXT,
+        recipient_dept_names TEXT,
         file_path TEXT,
         sed_url TEXT,
         comments TEXT,
@@ -200,6 +203,29 @@ class SQLiteDatabaseManager {
     `;
 
     this.db.exec(schema);
+
+    // Безопасное добавление новых колонок для существующих БД
+    try {
+      this.db.exec("ALTER TABLE documents ADD COLUMN recipient_ids TEXT;");
+    } catch {}
+    try {
+      this.db.exec("ALTER TABLE documents ADD COLUMN recipient_dept_ids TEXT;");
+    } catch {}
+    try {
+      this.db.exec("ALTER TABLE documents ADD COLUMN recipient_dept_names TEXT;");
+    } catch {}
+    try {
+      this.db.exec("ALTER TABLE documents ADD COLUMN sender_dept_id INTEGER;");
+    } catch {}
+    try {
+      this.db.exec("ALTER TABLE documents ADD COLUMN sender_dept_name TEXT;");
+    } catch {}
+    try {
+      this.db.exec("ALTER TABLE documents ADD COLUMN sender_emp_id INTEGER;");
+    } catch {}
+    try {
+      this.db.exec("ALTER TABLE documents ADD COLUMN sender_emp_name TEXT;");
+    } catch {}
 
     // Первоначальное наполнение базовыми справочниками, если таблица doc_types пуста
     const count = this.db.prepare('SELECT count(*) as c FROM doc_types').get().c;
@@ -362,13 +388,18 @@ class SQLiteDatabaseManager {
   // --- CRUD Документы ---
   public getDocuments(): DocumentRecord[] {
     if (!this.db) return [];
-    return this.db.prepare(`
+    const rows = this.db.prepare(`
       SELECT d.id, d.doc_type_id as docTypeId, dt.name as docTypeName,
              d.direction_id as directionId, dir.name as directionName,
              d.outgoing_number as outgoingNumber, d.outgoing_date as outgoingDate,
              d.incoming_number as incomingNumber, d.incoming_date as incomingDate,
              d.subject, d.sender_id as senderId, s.name as senderName,
+             d.sender_dept_id as senderDepartmentId, d.sender_dept_name as senderDepartmentName,
+             d.sender_emp_id as senderEmployeeId, d.sender_emp_name as senderEmployeeName,
              d.recipient_id as recipientId, r.name as recipientName,
+             d.recipient_ids as recipientIdsRaw,
+             d.recipient_dept_ids as recipientDeptIdsRaw,
+             d.recipient_dept_names as recipientDepartmentNames,
              d.file_path as filePath, d.sed_url as sedUrl, d.comments,
              d.created_at as createdAt, d.updated_at as updatedAt
       FROM documents d
@@ -378,21 +409,77 @@ class SQLiteDatabaseManager {
       LEFT JOIN organizations r ON d.recipient_id = r.id
       ORDER BY d.id DESC
     `).all();
+
+    const orgs = this.getOrganizations();
+
+    return rows.map((row: any) => {
+      let recipientIds: number[] = [];
+      if (row.recipientIdsRaw) {
+        try {
+          const parsed = JSON.parse(row.recipientIdsRaw);
+          if (Array.isArray(parsed)) recipientIds = parsed;
+        } catch {}
+      }
+      if (recipientIds.length === 0 && row.recipientId) {
+        recipientIds = [row.recipientId];
+      }
+
+      let recipientDepartmentIds: number[] = [];
+      if (row.recipientDeptIdsRaw) {
+        try {
+          const parsed = JSON.parse(row.recipientDeptIdsRaw);
+          if (Array.isArray(parsed)) recipientDepartmentIds = parsed;
+        } catch {}
+      }
+
+      let recipientName = row.recipientName || '—';
+      if (recipientIds.length > 1) {
+        const names = recipientIds.map((id) => orgs.find((o) => o.id === id)?.name).filter(Boolean);
+        if (names.length > 0) {
+          recipientName = names.join(', ');
+        }
+      }
+
+      return {
+        ...row,
+        senderDepartmentId: row.senderDepartmentId || undefined,
+        senderDepartmentName: row.senderDepartmentName || undefined,
+        senderEmployeeId: row.senderEmployeeId || undefined,
+        senderEmployeeName: row.senderEmployeeName || undefined,
+        recipientName,
+        recipientIds,
+        recipientDepartmentIds,
+        recipientDepartmentNames: row.recipientDepartmentNames || undefined,
+      };
+    });
   }
 
   public saveDocument(doc: Omit<DocumentRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: number }): DocumentRecord {
     if (!this.db) throw new Error('БД не подключена');
+    const recipientIds = doc.recipientIds || (doc.recipientId ? [doc.recipientId] : []);
+    const primaryRecipientId = doc.recipientId || (recipientIds.length > 0 ? recipientIds[0] : null);
+    const recipientIdsJson = recipientIds.length > 0 ? JSON.stringify(recipientIds) : null;
+    const recipientDeptIdsJson = doc.recipientDepartmentIds && doc.recipientDepartmentIds.length > 0
+      ? JSON.stringify(doc.recipientDepartmentIds)
+      : null;
+    const recipientDeptNames = doc.recipientDepartmentNames || null;
+
     if (doc.id) {
       this.db.prepare(`
         UPDATE documents SET 
           doc_type_id = ?, direction_id = ?, outgoing_number = ?, outgoing_date = ?,
           incoming_number = ?, incoming_date = ?, subject = ?, sender_id = ?,
-          recipient_id = ?, file_path = ?, sed_url = ?, comments = ?, updated_at = CURRENT_TIMESTAMP
+          sender_dept_id = ?, sender_dept_name = ?, sender_emp_id = ?, sender_emp_name = ?,
+          recipient_id = ?, recipient_ids = ?, recipient_dept_ids = ?, recipient_dept_names = ?,
+          file_path = ?, sed_url = ?, comments = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(
         doc.docTypeId, doc.directionId, doc.outgoingNumber || null, doc.outgoingDate || null,
         doc.incomingNumber || null, doc.incomingDate || null, doc.subject, doc.senderId || null,
-        doc.recipientId || null, doc.filePath || null, doc.sedUrl || null, doc.comments || null,
+        doc.senderDepartmentId || null, doc.senderDepartmentName || null,
+        doc.senderEmployeeId || null, doc.senderEmployeeName || null,
+        primaryRecipientId, recipientIdsJson, recipientDeptIdsJson, recipientDeptNames,
+        doc.filePath || null, doc.sedUrl || null, doc.comments || null,
         doc.id
       );
       return this.getDocuments().find((d) => d.id === doc.id)!;
@@ -400,12 +487,18 @@ class SQLiteDatabaseManager {
       const info = this.db.prepare(`
         INSERT INTO documents (
           doc_type_id, direction_id, outgoing_number, outgoing_date,
-          incoming_number, incoming_date, subject, sender_id, recipient_id, file_path, sed_url, comments
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          incoming_number, incoming_date, subject, sender_id,
+          sender_dept_id, sender_dept_name, sender_emp_id, sender_emp_name,
+          recipient_id, recipient_ids, recipient_dept_ids, recipient_dept_names,
+          file_path, sed_url, comments
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         doc.docTypeId, doc.directionId, doc.outgoingNumber || null, doc.outgoingDate || null,
         doc.incomingNumber || null, doc.incomingDate || null, doc.subject, doc.senderId || null,
-        doc.recipientId || null, doc.filePath || null, doc.sedUrl || null, doc.comments || null
+        doc.senderDepartmentId || null, doc.senderDepartmentName || null,
+        doc.senderEmployeeId || null, doc.senderEmployeeName || null,
+        primaryRecipientId, recipientIdsJson, recipientDeptIdsJson, recipientDeptNames,
+        doc.filePath || null, doc.sedUrl || null, doc.comments || null
       );
       return this.getDocuments().find((d) => d.id === info.lastInsertRowid)!;
     }

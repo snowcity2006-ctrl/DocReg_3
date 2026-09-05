@@ -60,8 +60,15 @@ export interface DocumentRecord {
   subject: string; // Тема (обязательно *)
   senderId?: number; // Отправитель (Организация)
   senderName?: string;
-  recipientId?: number; // Получатель (Организация)
+  senderDepartmentId?: number; // Структурное подразделение отправителя
+  senderDepartmentName?: string; // Название/краткое наименование СП отправителя
+  senderEmployeeId?: number; // Исполнитель (Сотрудник отправителя)
+  senderEmployeeName?: string; // ФИО исполнителя
+  recipientId?: number; // Получатель (Организация, первый/основной)
   recipientName?: string;
+  recipientIds?: number[]; // Множественный выбор получателей (Организаций)
+  recipientDepartmentIds?: number[]; // Множественный выбор структурных подразделений получателя
+  recipientDepartmentNames?: string; // Названия структурных подразделений получателя
   filePath?: string; // Путь к документу (гиперссылка на папку или файл)
   sedUrl?: string; // Путь к документу в СЭД (гиперссылка в формате интернет браузера)
   comments?: string;

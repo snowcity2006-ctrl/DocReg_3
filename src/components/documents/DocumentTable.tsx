@@ -482,12 +482,37 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
 
                 {/* Отправитель */}
                 <td className="py-2.5 px-3 break-words text-gray-300">
-                  {doc.senderName || '—'}
+                  <div>
+                    <span>{doc.senderName || '—'}</span>
+                    {(doc.senderDepartmentName || doc.senderEmployeeName) && (
+                      <div className="mt-1 flex flex-col gap-0.5 text-[10px]">
+                        {doc.senderDepartmentName && (
+                          <span className="inline-flex items-center text-blue-400">
+                            СП: {doc.senderDepartmentName}
+                          </span>
+                        )}
+                        {doc.senderEmployeeName && (
+                          <span className="inline-flex items-center text-gray-400">
+                            Исп: {doc.senderEmployeeName}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </td>
 
                 {/* Получатель */}
                 <td className="py-2.5 px-3 break-words text-gray-300">
-                  {doc.recipientName || '—'}
+                  <div>
+                    <span>{doc.recipientName || '—'}</span>
+                    {doc.recipientDepartmentNames && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-950/60 text-indigo-300 border border-indigo-800/40">
+                          СП: {doc.recipientDepartmentNames}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </td>
 
                 {/* Путь к документу (гиперссылка) */}
