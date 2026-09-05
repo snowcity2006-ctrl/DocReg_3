@@ -38,7 +38,43 @@ process.on('uncaughtException', (error) => {
 
 let mainWindow: BrowserWindow | null = null;
 
+function getPreloadPath(): string {
+  const candidates = [
+    path.join(__dirname, 'preload.cjs'),
+    path.join(__dirname, 'preload.js'),
+    path.join(app.getAppPath(), 'dist-electron', 'preload.cjs'),
+    path.join(app.getAppPath(), 'dist-electron', 'preload.js'),
+  ];
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) return c;
+    } catch {}
+  }
+  return path.join(__dirname, 'preload.cjs');
+}
+
+function getIndexPath(): string {
+  const candidates = [
+    path.join(__dirname, '../dist/index.html'),
+    path.join(app.getAppPath(), 'dist', 'index.html'),
+    path.join(app.getAppPath(), 'dist/index.html'),
+    path.join(process.resourcesPath, 'app.asar', 'dist', 'index.html'),
+    path.join(process.resourcesPath, 'app', 'dist', 'index.html'),
+    path.join(__dirname, 'dist', 'index.html'),
+    path.join(__dirname, 'index.html'),
+  ];
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) return c;
+    } catch {}
+  }
+  return path.join(app.getAppPath(), 'dist', 'index.html');
+}
+
 async function createWindow() {
+  const preloadPath = getPreloadPath();
+  console.log('[Electron] Using preload script:', preloadPath);
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -46,27 +82,70 @@ async function createWindow() {
     minHeight: 700,
     title: 'Система учета документооборота',
     backgroundColor: '#0f172a',
+    show: false,
     webPreferences: {
-      preload: fs.existsSync(path.join(__dirname, 'preload.cjs'))
-        ? path.join(__dirname, 'preload.cjs')
-        : path.join(__dirname, 'preload.js'),
+      preload: preloadPath,
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
+      webSecurity: false,
     },
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+  });
+
+  // Диагностика загрузки контента
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Electron did-fail-load] Code: ${errorCode}, Description: ${errorDescription}, URL: ${validatedURL}`);
+    try {
+      logger.log('error', 'main', `Ошибка загрузки URL: ${validatedURL}`, { errorCode, errorDescription });
+    } catch {}
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[Electron render-process-gone]:', details);
+    try {
+      logger.log('error', 'main', 'Рендер-процесс аварийно завершен', details);
+    } catch {}
   });
 
   // В разработке загружаем локальный dev-сервер Vite, в production - собранный index.html
   if (process.env.VITE_DEV_SERVER_URL) {
     await mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
-    const indexPath = path.join(__dirname, '../dist/index.html');
+    const indexPath = getIndexPath();
     if (fs.existsSync(indexPath)) {
+      console.log('[Electron] Loading frontend from file:', indexPath);
       await mainWindow.loadFile(indexPath);
     } else {
-      await mainWindow.loadURL('http://localhost:3000');
+      console.warn('[Electron] dist/index.html not found, fallback to localhost:3000');
+      try {
+        await mainWindow.loadURL('http://localhost:3000');
+      } catch (err: any) {
+        console.error('[Electron] Failed to connect to localhost:3000:', err.message);
+        await mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+          <!DOCTYPE html>
+          <html>
+          <head><meta charset="utf-8"><title>DocFlow - Ошибка</title></head>
+          <body style="font-family: sans-serif; background: #0f172a; color: #f8fafc; padding: 40px; text-align: center;">
+            <h2 style="color: #ef4444;">Интерфейс не найден</h2>
+            <p>Не удалось обнаружить файл <code>dist/index.html</code>.</p>
+            <p style="color: #94a3b8; font-size: 13px;">AppPath: ${app.getAppPath()}</p>
+          </body>
+          </html>
+        `)}`);
+      }
     }
   }
+
+  // Страховочный показ окна через 1 сек, если ready-to-show задержался
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isVisible()) {
+      mainWindow.show();
+    }
+  }, 1000);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -78,6 +157,20 @@ function setupIpcHandlers() {
   // --- База данных ---
   ipcMain.handle('db:getConfig', async () => {
     return store.getDbConfig();
+  });
+
+  ipcMain.handle('db:getStatus', async () => {
+    const cfg = store.getDbConfig();
+    const access = await dbManager.checkPathAccessibility(cfg.dbPath);
+    const docs = dbManager.getDocuments();
+    return {
+      connected: access.accessible,
+      path: cfg.dbPath,
+      isNetwork: cfg.isNetworkPath,
+      isAccessible: access.accessible,
+      lastSync: cfg.lastConnected || new Date().toISOString(),
+      recordsCount: Array.isArray(docs) ? docs.length : 0,
+    };
   });
 
   ipcMain.handle('db:setPath', async (_event, newPath: string) => {
@@ -236,15 +329,40 @@ if (!gotTheLock) {
     setupIpcHandlers();
 
     // Автоматическая инициализация БД из сохраненного конфига
-    const config = store.getDbConfig();
+    let config = store.getDbConfig();
+    if (!config.dbPath) {
+      const defaultDbDir = path.join(app.getPath('userData'), 'database');
+      try {
+        if (!fs.existsSync(defaultDbDir)) {
+          fs.mkdirSync(defaultDbDir, { recursive: true });
+        }
+      } catch {}
+      const defaultPath = path.join(defaultDbDir, 'docflow.sqlite');
+      config = store.setDbConfig({
+        dbPath: defaultPath,
+        isNetworkPath: false,
+        isAccessible: true,
+        lastConnected: new Date().toISOString(),
+      });
+    }
+
     if (config.dbPath) {
-      await dbManager.connect(config.dbPath, config.busyTimeout);
-      if (config.autoBackupOnStart) {
-        await backupManager.createBackup(true);
+      try {
+        await dbManager.connect(config.dbPath, config.busyTimeout);
+        if (config.autoBackupOnStart) {
+          await backupManager.createBackup(true);
+        }
+      } catch (err: any) {
+        console.error('[Electron] Failed to connect DB at startup:', err);
+        logger.log('warn', 'db', `Не удалось подключиться к БД при запуске: ${err.message}`);
       }
     }
 
-    await createWindow();
+    try {
+      await createWindow();
+    } catch (winErr: any) {
+      console.error('[Electron] Fatal error creating window:', winErr);
+    }
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

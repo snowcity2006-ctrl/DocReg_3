@@ -18,7 +18,8 @@ import { electronBridge } from '../services/electronBridge';
 interface DbConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfigSaved: (config: DatabaseConfig) => void;
+  onConfigSaved?: (config: DatabaseConfig) => void;
+  onSaved?: () => void;
   isFirstLaunch?: boolean;
 }
 
@@ -26,6 +27,7 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
   isOpen,
   onClose,
   onConfigSaved,
+  onSaved,
   isFirstLaunch = false,
 }) => {
   const [dbPath, setDbPath] = useState('');
@@ -101,8 +103,13 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
     setError(null);
     try {
       const res = await electronBridge.setDbPath(dbPath.trim());
-      if (res.success && res.config) {
-        onConfigSaved(res.config);
+      if (res.success) {
+        if (res.config && onConfigSaved) {
+          onConfigSaved(res.config);
+        }
+        if (onSaved) {
+          onSaved();
+        }
         onClose();
       } else {
         setError(res.message || 'Не удалось сохранить путь к базе данных');

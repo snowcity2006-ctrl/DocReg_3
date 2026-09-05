@@ -7,6 +7,7 @@ import { ElectronAPI, LogLevel } from '../src/types';
 const api: ElectronAPI = {
   // База данных
   getDbConfig: () => ipcRenderer.invoke('db:getConfig'),
+  getDbStatus: () => ipcRenderer.invoke('db:getStatus'),
   setDbPath: (path: string) => ipcRenderer.invoke('db:setPath', path),
   testDbConnection: (path?: string) => ipcRenderer.invoke('db:testConnection', path),
   refreshDb: () => ipcRenderer.invoke('db:refresh'),
