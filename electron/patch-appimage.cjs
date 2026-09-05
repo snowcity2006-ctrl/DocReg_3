@@ -1,7 +1,7 @@
 /**
- * Скрипт патчинга заголовка AppImage для безусловного запуска в Astra Linux 1.7 / 1.8.
+ * Скрипт патчинга заголовка AppImage для автономного запуска в Astra Linux 1.7 / 1.8.
  * В Astra Linux модуль ядра Parsec по умолчанию блокирует запуск бинарников из FUSE (parsec.enable_exec_on_fuse=0),
- * а также пакет libfuse2 часто отсутствует.
+ * а также пакет libfuse2 отсутствует по умолчанию.
  *
  * Этот скрипт модифицирует инструкцию условного перехода jne (0x75 0x1e)
  * после проверки переменной APPIMAGE_EXTRACT_AND_RUN в заголовке AppImage Type 2
@@ -25,20 +25,18 @@ function patchAppImageFile(filePath) {
 
   const data = fs.readFileSync(filePath);
 
-  // Ищем строку APPIMAGE_EXTRACT_AND_RUN
-  const envStr = Buffer.from('APPIMAGE_EXTRACT_AND_RUN');
-  const envIdx = data.indexOf(envStr);
-  if (envIdx === -1) {
-    console.log('[patch-appimage] Сигнатура APPIMAGE_EXTRACT_AND_RUN не найдена.');
-    return false;
-  }
-
-  // Сигнатура проверки: test %rax, %rax; jne +0x1e
+  // Ищем сигнатуру проверки: test %rax, %rax; jne +0x1e
   // 48 85 c0 75 1e
   const needle = Buffer.from([0x48, 0x85, 0xc0, 0x75, 0x1e]);
-  const idx = data.indexOf(needle);
+  const needlePatched = Buffer.from([0x48, 0x85, 0xc0, 0xeb, 0x1e]);
 
-  if (idx !== -1 && idx < 0x20000) {
+  // Ищем только в пределах runtime ELF (первые 2 МБ файла)
+  const maxSearchRange = Math.min(data.length, 2 * 1024 * 1024);
+  const searchSlice = data.subarray(0, maxSearchRange);
+
+  const idx = searchSlice.indexOf(needle);
+
+  if (idx !== -1) {
     const patchOffset = idx + 3; // Байт 0x75
     if (data[patchOffset] === 0x75) {
       data[patchOffset] = 0xeb; // Заменяем jne на jmp
@@ -47,13 +45,17 @@ function patchAppImageFile(filePath) {
       console.log(`[patch-appimage] Успешно пропатчен заголовок AppImage по смещению 0x${patchOffset.toString(16)} (jne -> jmp).`);
       console.log('[patch-appimage] Теперь AppImage работает автономно без FUSE в любой конфигурации Astra Linux 1.7!');
       return true;
-    } else if (data[patchOffset] === 0xeb) {
-      console.log('[patch-appimage] AppImage уже был пропатчен ранее.');
-      return true;
     }
   }
 
-  console.log('[patch-appimage] Точка ветвления не найдена в заданном диапазоне.');
+  const idxPatched = searchSlice.indexOf(needlePatched);
+  if (idxPatched !== -1) {
+    fs.chmodSync(filePath, 0o755);
+    console.log(`[patch-appimage] AppImage уже был пропатчен ранее по смещению 0x${(idxPatched + 3).toString(16)}.`);
+    return true;
+  }
+
+  console.log('[patch-appimage] Внимание: точка перехода jne 0x1e не найдена в заголовке runtime.');
   return false;
 }
 

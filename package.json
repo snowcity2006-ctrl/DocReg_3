@@ -18,7 +18,7 @@
     "clean": "rm -rf dist dist-electron release server.js",
     "lint": "tsc --noEmit",
     "postinstall": "electron-builder install-app-deps",
-    "pack:linux": "npm run build && npm run build:electron && electron-builder --linux AppImage deb -p never && node electron/patch-appimage.cjs",
+    "pack:linux": "npm run build && npm run build:electron && node electron/patch-glibc.cjs && electron-builder --linux AppImage deb -p never && node electron/patch-appimage.cjs",
     "pack:win": "npm run build && npm run build:electron && electron-builder --win portable -p never",
     "pack": "npm run build && npm run build:electron && electron-builder"
   },

@@ -38,26 +38,30 @@ jobs:
         run: npm run build:electron
 
       - name: Подготовка native-модулей
-        run: npx @electron/rebuild -f -w better-sqlite3 || true
+        run: |
+          npx @electron/rebuild -f -w better-sqlite3 || true
+          node electron/patch-glibc.cjs
 
       - name: Сборка Linux пакетов (AppImage и DEB для Astra Linux)
         run: |
           npx electron-builder --linux AppImage deb --x64 -p never
           node electron/patch-appimage.cjs
           chmod +x release/*.AppImage
-          cd release
-          tar -czvf docflow-portable-astra-linux.tar.gz *.AppImage
-          cd ..
 
-      - name: Загрузка Linux дистрибутивов в артефакты сборки
+      - name: Загрузка AppImage для Linux в артефакты сборки
         uses: actions/upload-artifact@v4
         with:
-          name: DocFlow-Linux-Astra-Distribution
-          path: |
-            release/*.AppImage
-            release/*.deb
-            release/*.tar.gz
-          if-no-files-found: warn
+          name: DocFlow-Linux-AppImage
+          path: release/*.AppImage
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Загрузка DEB пакета для Astra Linux в артефакты сборки
+        uses: actions/upload-artifact@v4
+        with:
+          name: DocFlow-Linux-DEB
+          path: release/*.deb
+          if-no-files-found: ignore
           retention-days: 30
 
       - name: Добавление дистрибутивов Linux в GitHub Release
@@ -67,7 +71,6 @@ jobs:
           files: |
             release/*.AppImage
             release/*.deb
-            release/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

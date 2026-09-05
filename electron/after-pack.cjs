@@ -1,16 +1,24 @@
 /**
  * Hook afterPack для electron-builder.
- * Создает безопасный wrapper-скрипт запуска для Astra Linux 1.7/1.8.
- * Гарантирует передачу флагов --no-sandbox и аппаратного декодирования
- * еще до инициализации C++ процессов Chromium zygote / sandbox.
+ * 1. Патчит native-модули (.node) для гарантированной совместимости с Astra Linux 1.7 (glibc 2.28).
+ * 2. Создает надежный wrapper-скрипт запуска для Astra Linux 1.7/1.8.
+ *    Гарантирует передачу флагов --no-sandbox и поддержку программного рендеринга
+ *    еще до инициализации C++ процессов Chromium zygote / sandbox.
  */
 
 const path = require('path');
 const fs = require('fs');
+const { scanAndPatchDir } = require('./patch-glibc.cjs');
 
 exports.default = async function(context) {
   if (context.electronPlatformName === 'linux') {
     const appDir = context.appOutDir;
+
+    // 1. Патчим все native-модули (.node) в распакованном приложении для glibc 2.28
+    console.log(`[afterPack] Проверка и патчинг native-модулей в: ${appDir}`);
+    scanAndPatchDir(appDir);
+
+    // 2. Создаем wrapper-скрипт запуска
     const binaryName = 'docflow-portable';
     const originalBinPath = path.join(appDir, binaryName);
     const renamedBinPath = path.join(appDir, `${binaryName}.bin`);
@@ -29,7 +37,6 @@ exec "\$HERE/${binaryName}.bin" \\
   --disable-setuid-sandbox \\
   --disable-gpu-sandbox \\
   --disable-dev-shm-usage \\
-  --disable-software-rasterizer \\
   "\$@"
 `;
 
