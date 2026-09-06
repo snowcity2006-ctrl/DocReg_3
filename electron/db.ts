@@ -147,6 +147,7 @@ class SQLiteDatabaseManager {
       CREATE TABLE IF NOT EXISTS employees (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         full_name TEXT NOT NULL,
+        position TEXT,
         department_short_name TEXT NOT NULL,
         organization_id INTEGER NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -226,6 +227,9 @@ class SQLiteDatabaseManager {
     try {
       this.db.exec("ALTER TABLE documents ADD COLUMN sender_emp_name TEXT;");
     } catch {}
+    try {
+      this.db.exec("ALTER TABLE employees ADD COLUMN position TEXT;");
+    } catch {}
 
     // Первоначальное наполнение базовыми справочниками, если таблица doc_types пуста
     const count = this.db.prepare('SELECT count(*) as c FROM doc_types').get().c;
@@ -239,9 +243,9 @@ class SQLiteDatabaseManager {
       insertDept.run('Управление делами и документооборота', 'УДО', 1);
       insertDept.run('Отдел информационной безопасности', 'ОИБ', 1);
 
-      const insertEmp = this.db.prepare('INSERT INTO employees (full_name, department_short_name, organization_id) VALUES (?, ?, ?)');
-      insertEmp.run('Иванов Иван Иванович', 'УДО', 1);
-      insertEmp.run('Смирнова Елена Александровна', 'ОИБ', 1);
+      const insertEmp = this.db.prepare('INSERT INTO employees (full_name, position, department_short_name, organization_id) VALUES (?, ?, ?, ?)');
+      insertEmp.run('Иванов Иван Иванович', 'Главный специалист', 'УДО', 1);
+      insertEmp.run('Смирнова Елена Александровна', 'Начальник отдела', 'ОИБ', 1);
 
       const insertType = this.db.prepare('INSERT INTO doc_types (name) VALUES (?)');
       ['Входящее письмо', 'Исходящий запрос', 'Приказ', 'Распоряжение', 'Договор', 'Акт приема-передачи'].forEach((t) => insertType.run(t));
@@ -311,7 +315,7 @@ class SQLiteDatabaseManager {
   public getEmployees(): Employee[] {
     if (!this.db) return [];
     return this.db.prepare(`
-      SELECT e.id, e.full_name as fullName, e.department_short_name as departmentShortName, 
+      SELECT e.id, e.full_name as fullName, e.position as position, e.department_short_name as departmentShortName, 
              e.organization_id as organizationId, o.name as organizationName,
              e.created_at as createdAt, e.updated_at as updatedAt
       FROM employees e
@@ -323,12 +327,12 @@ class SQLiteDatabaseManager {
   public saveEmployee(emp: Omit<Employee, 'id'> & { id?: number }): Employee {
     if (!this.db) throw new Error('БД не подключена');
     if (emp.id) {
-      this.db.prepare('UPDATE employees SET full_name = ?, department_short_name = ?, organization_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-        .run(emp.fullName, emp.departmentShortName, emp.organizationId, emp.id);
+      this.db.prepare('UPDATE employees SET full_name = ?, position = ?, department_short_name = ?, organization_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(emp.fullName, emp.position || '', emp.departmentShortName, emp.organizationId, emp.id);
       return this.getEmployees().find((e) => e.id === emp.id)!;
     } else {
-      const info = this.db.prepare('INSERT INTO employees (full_name, department_short_name, organization_id) VALUES (?, ?, ?)')
-        .run(emp.fullName, emp.departmentShortName, emp.organizationId);
+      const info = this.db.prepare('INSERT INTO employees (full_name, position, department_short_name, organization_id) VALUES (?, ?, ?, ?)')
+        .run(emp.fullName, emp.position || '', emp.departmentShortName, emp.organizationId);
       return this.getEmployees().find((e) => e.id === info.lastInsertRowid)!;
     }
   }

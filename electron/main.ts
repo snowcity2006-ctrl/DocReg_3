@@ -218,7 +218,15 @@ function setupIpcHandlers() {
   });
 
   ipcMain.handle('db:refresh', async () => {
-    return { success: true, timestamp: new Date().toISOString() };
+    const cfg = store.getDbConfig();
+    const access = await dbManager.checkPathAccessibility(cfg.dbPath);
+    const nowIso = new Date().toISOString();
+    store.setDbConfig({
+      isAccessible: access.accessible,
+      lastConnected: nowIso,
+    });
+    logger.log('info', 'db', `Принудительное обновление базы данных SQLite выполнено (${nowIso})`);
+    return { success: true, timestamp: nowIso, isAccessible: access.accessible };
   });
 
   // --- Справочники ---

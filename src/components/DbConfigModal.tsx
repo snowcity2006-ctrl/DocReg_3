@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { DatabaseConfig } from '../types';
 import { electronBridge } from '../services/electronBridge';
+import { FolderBrowserModal } from './FolderBrowserModal';
 
 interface DbConfigModalProps {
   isOpen: boolean;
@@ -43,6 +44,10 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; pingMs?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Состояние модального окна выбора каталогов на сетевых и локальных дисках
+  const [folderBrowserOpen, setFolderBrowserOpen] = useState(false);
+  const [folderBrowserMode, setFolderBrowserMode] = useState<'database' | 'backup'>('database');
+
   useEffect(() => {
     if (isOpen) {
       loadConfig();
@@ -63,29 +68,48 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
     }
   };
 
-  // Выбор папки для сохранения основного файла БД на сетевых или локальных дисках
-  const handleSelectFolderForDb = async () => {
-    try {
-      const selected = await electronBridge.selectDatabaseFolder();
-      if (selected) {
-        // Сохраняем имя файла если оно уже было задано в dbPath
-        let filename = 'company_docs.sqlite';
-        if (dbPath.trim()) {
-          const cleanPath = dbPath.trim().replace(/\\/g, '/');
-          const lastSegment = cleanPath.split('/').pop();
-          if (lastSegment && (lastSegment.endsWith('.sqlite') || lastSegment.endsWith('.db') || lastSegment.endsWith('.sqlite3'))) {
-            filename = lastSegment;
-          }
+  // Открытие интерактивного диалога выбора папки для основного файла БД на сетевых дисках
+  const handleSelectFolderForDb = () => {
+    setFolderBrowserMode('database');
+    setFolderBrowserOpen(true);
+  };
+
+  // Открытие диалога выбора папки для сохранения резервной копии БД (бэкапа)
+  const handleSelectBackupFolder = () => {
+    setFolderBrowserMode('backup');
+    setFolderBrowserOpen(true);
+  };
+
+  // Обработка подтверждения выбора папки из FolderBrowserModal
+  const handleFolderSelected = (selectedFolder: string) => {
+    if (folderBrowserMode === 'database') {
+      let filename = 'company_docs.sqlite';
+      if (dbPath.trim()) {
+        const cleanPath = dbPath.trim().replace(/\\/g, '/');
+        const lastSegment = cleanPath.split('/').pop();
+        if (lastSegment && (lastSegment.endsWith('.sqlite') || lastSegment.endsWith('.db') || lastSegment.endsWith('.sqlite3'))) {
+          filename = lastSegment;
         }
-        const normalizedFolder = selected.replace(/\\/g, '/');
-        const folderWithSlash = normalizedFolder.endsWith('/') ? normalizedFolder : `${normalizedFolder}/`;
-        const newPath = `${folderWithSlash}${filename}`;
-        setDbPath(newPath);
-        setTestResult(null);
-        setError(null);
       }
-    } catch (err: any) {
-      setError(`Ошибка диалога выбора папки БД: ${err.message}`);
+      const isWin = selectedFolder.includes('\\');
+      const sep = isWin ? '\\' : '/';
+      const cleanFolder = selectedFolder.endsWith('/') || selectedFolder.endsWith('\\')
+        ? selectedFolder
+        : `${selectedFolder}${sep}`;
+      
+      const newDbPath = `${cleanFolder}${filename}`;
+      setDbPath(newDbPath);
+      setTestResult(null);
+      setError(null);
+    } else {
+      // Для бэкапа сохраняем выбранный каталог
+      const isWin = selectedFolder.includes('\\');
+      const sep = isWin ? '\\' : '/';
+      const cleanFolder = selectedFolder.endsWith('/') || selectedFolder.endsWith('\\')
+        ? selectedFolder
+        : `${selectedFolder}${sep}`;
+      setBackupFolder(cleanFolder);
+      setError(null);
     }
   };
 
@@ -100,19 +124,6 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
       }
     } catch (err: any) {
       setError(`Ошибка диалога выбора файла БД: ${err.message}`);
-    }
-  };
-
-  // Выбор папки для сохранения резервной копии БД
-  const handleSelectBackupFolder = async () => {
-    try {
-      const selected = await electronBridge.selectBackupFolder();
-      if (selected) {
-        setBackupFolder(selected.replace(/\\/g, '/'));
-        setError(null);
-      }
-    } catch (err: any) {
-      setError(`Ошибка выбора папки бэкапов: ${err.message}`);
     }
   };
 
@@ -522,6 +533,26 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
         </div>
 
       </div>
+
+      {/* Интерактивное окно выбора папки на сетевых и локальных дисках */}
+      <FolderBrowserModal
+        isOpen={folderBrowserOpen}
+        onClose={() => setFolderBrowserOpen(false)}
+        onSelect={handleFolderSelected}
+        mode={folderBrowserMode}
+        title={
+          folderBrowserMode === 'database'
+            ? 'Выбор папки для размещения базы данных SQLite на сетевом диске'
+            : 'Выбор папки для сохранения резервных копий базы данных (бэкапов)'
+        }
+        initialPath={
+          folderBrowserMode === 'database'
+            ? (dbPath.includes('/') || dbPath.includes('\\')
+                ? dbPath.substring(0, Math.max(dbPath.lastIndexOf('/'), dbPath.lastIndexOf('\\')) + 1)
+                : '/mnt/smb_share/docflow/')
+            : (backupFolder || '/mnt/smb_share/docflow/backup/')
+        }
+      />
     </div>
   );
 };

@@ -15,6 +15,7 @@ import {
   FolderOpen
 } from 'lucide-react';
 import { ThemeMode, DatabaseConfig, DbStatus } from '../types';
+import { formatDbUpdateDateTime } from '../utils/date';
 
 export interface NavbarProps {
   dbStatus?: DbStatus | null;
@@ -62,7 +63,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const isAccessible = dbStatus?.isAccessible ?? dbConfig?.isAccessible ?? true;
   const dbPath = dbStatus?.path || dbConfig?.dbPath || '';
-  const displayUpdateTime = lastUpdateTime || dbStatus?.lastUpdated || 'Только что';
+  const displayUpdateTime = formatDbUpdateDateTime(lastUpdateTime || dbStatus?.lastUpdated);
 
   const handleRefresh = async () => {
     if (onRefreshData) {
@@ -132,13 +133,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                     ></div>
                     {isAccessible !== false ? 'БД активна' : 'БД недоступна'}
                   </div>
-                  <span className="text-gray-500 text-xs hidden sm:inline">|</span>
-                  <span
-                    className="text-xs text-gray-400 font-mono truncate max-w-[180px] sm:max-w-xs hidden sm:inline"
-                    title={dbPath || 'БД не настроена'}
-                  >
-                    {dbPath ? dbPath : 'БД: Сетевая (SQLite)'}
-                  </span>
                 </div>
               </div>
             </div>
@@ -178,26 +172,29 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Правая часть: Статус обновления БД, кнопки действий и тема */}
           <div className="flex items-center gap-2 sm:gap-3">
             
-            {/* Блок с последним временем обновления БД по ТЗ */}
+            {/* Блок с последним временем обновления БД по ТЗ: Дата: ДД-ММ-ГГГГ, Время: ЧЧ:ММ:СС */}
             <div className="hidden sm:flex flex-col items-end text-right pr-1">
-              <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">
-                Обновлено
-              </p>
-              <p id="label-last-db-update" className="text-xs text-gray-300 tabular-nums font-mono">
+              <span className="text-[10px] text-gray-400 font-medium tracking-wide">
+                Синхронизация БД
+              </span>
+              <span id="label-last-db-update" className="text-xs text-blue-300 font-semibold tabular-nums font-mono">
                 {displayUpdateTime}
-              </p>
+              </span>
             </div>
 
             {/* Кнопка ручного обновления БД */}
             <button
               id="btn-refresh-db"
+              type="button"
               onClick={handleRefresh}
               disabled={refreshing || isRefreshing}
-              title={`Обновить данные из базы данных (Последнее обновление: ${displayUpdateTime})`}
-              className="p-2 text-blue-400 hover:text-blue-300 hover:bg-[#2D3139] bg-[#0F1115] rounded-lg transition-colors border border-[#2D3139] cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              title={`Обновить базу данных и синхронизировать все формы (Последнее обновление: ${displayUpdateTime})`}
+              className="px-2.5 sm:px-3 py-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-600/20 bg-blue-600/10 rounded-xl transition-all border border-blue-500/30 cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-xs shrink-0"
             >
               <RefreshCw className={`w-4 h-4 ${(refreshing || isRefreshing) ? 'animate-spin text-blue-400' : ''}`} />
-              <span className="hidden xl:inline text-xs font-medium">Обновить БД</span>
+              <span className="text-xs font-semibold whitespace-nowrap">
+                {refreshing || isRefreshing ? 'Обновление...' : 'Обновить БД'}
+              </span>
             </button>
 
             {/* Кнопка создания резервной копии (Бэкап) */}

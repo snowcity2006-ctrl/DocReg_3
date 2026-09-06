@@ -201,7 +201,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
       
       {/* Контейнер таблицы с горизонтальным скроллом */}
       <div className="overflow-x-auto min-h-[350px]">
-        <table className="w-full text-left border-collapse text-xs select-none">
+        <table className="w-full text-left border-collapse text-xs select-none" style={{ tableLayout: 'fixed' }}>
           <thead>
             <tr className="border-b border-[#2D3139] bg-[#1F222B] text-gray-400 font-semibold uppercase tracking-wider">
               
@@ -431,7 +431,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 className="hover:bg-[#1F222B]/70 transition-colors group"
               >
                 {/* ID */}
-                <td className="py-2.5 px-3 font-mono text-gray-500 whitespace-nowrap">
+                <td className="py-2.5 px-3 font-mono text-gray-500 break-words">
                   {doc.id}
                 </td>
 
@@ -444,7 +444,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
 
                 {/* Направление */}
                 <td className="py-2.5 px-3">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 whitespace-nowrap">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 break-words whitespace-normal inline-block">
                     {doc.directionName || '—'}
                   </span>
                 </td>
@@ -455,7 +455,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </td>
 
                 {/* Исх.дата */}
-                <td className="py-2.5 px-3 font-mono text-gray-300 whitespace-nowrap">
+                <td className="py-2.5 px-3 font-mono text-gray-300 break-words">
                   {formatDateRussian(doc.outgoingDate)}
                 </td>
 
@@ -465,7 +465,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </td>
 
                 {/* Вх.дата */}
-                <td className="py-2.5 px-3 font-mono text-gray-300 whitespace-nowrap">
+                <td className="py-2.5 px-3 font-mono text-gray-300 break-words">
                   {formatDateRussian(doc.incomingDate)}
                 </td>
 
@@ -473,7 +473,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 <td className="py-2.5 px-3">
                   <span
                     onClick={() => onView(doc)}
-                    className="font-semibold text-white hover:text-blue-400 cursor-pointer break-words line-clamp-3 leading-relaxed transition-colors"
+                    className="font-semibold text-white hover:text-blue-400 cursor-pointer break-words whitespace-normal leading-relaxed transition-colors block"
                     title={doc.subject}
                   >
                     {doc.subject}
@@ -481,18 +481,18 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </td>
 
                 {/* Отправитель */}
-                <td className="py-2.5 px-3 break-words text-gray-300">
+                <td className="py-2.5 px-3 break-words whitespace-normal text-gray-300">
                   <div>
-                    <span>{doc.senderName || '—'}</span>
+                    <span className="break-words">{doc.senderName || '—'}</span>
                     {(doc.senderDepartmentName || doc.senderEmployeeName) && (
                       <div className="mt-1 flex flex-col gap-0.5 text-[10px]">
                         {doc.senderDepartmentName && (
-                          <span className="inline-flex items-center text-blue-400">
+                          <span className="inline-flex items-center text-blue-400 break-words">
                             СП: {doc.senderDepartmentName}
                           </span>
                         )}
                         {doc.senderEmployeeName && (
-                          <span className="inline-flex items-center text-gray-400">
+                          <span className="inline-flex items-center text-gray-400 break-words">
                             Исп: {doc.senderEmployeeName}
                           </span>
                         )}
@@ -502,12 +502,12 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </td>
 
                 {/* Получатель */}
-                <td className="py-2.5 px-3 break-words text-gray-300">
+                <td className="py-2.5 px-3 break-words whitespace-normal text-gray-300">
                   <div>
-                    <span>{doc.recipientName || '—'}</span>
+                    <span className="break-words">{doc.recipientName || '—'}</span>
                     {doc.recipientDepartmentNames && (
                       <div className="mt-1 flex flex-wrap gap-1">
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-950/60 text-indigo-300 border border-indigo-800/40">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-950/60 text-indigo-300 border border-indigo-800/40 break-words">
                           СП: {doc.recipientDepartmentNames}
                         </span>
                       </div>
@@ -527,14 +527,14 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                           type="button"
                           onClick={() => handleOpenFile(doc.filePath)}
                           title={`Открыть ${isFolder ? 'папку' : 'файл'}: ${doc.filePath}`}
-                          className={`inline-flex items-center gap-1.5 ${isFolder ? 'text-emerald-400 hover:text-emerald-300' : 'text-blue-400 hover:text-blue-300'} hover:underline max-w-full truncate font-mono text-[11px] cursor-pointer`}
+                          className={`inline-flex items-center gap-1.5 ${isFolder ? 'text-emerald-400 hover:text-emerald-300' : 'text-blue-400 hover:text-blue-300'} hover:underline max-w-full font-mono text-[11px] cursor-pointer break-all whitespace-normal text-left`}
                         >
                           {isFolder ? (
                             <FolderOpen className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                           ) : (
                             <FileText className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                           )}
-                          <span className="truncate">{displayName}</span>
+                          <span className="break-all">{displayName}</span>
                         </button>
                       );
                     })()

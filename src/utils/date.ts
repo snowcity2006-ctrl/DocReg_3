@@ -19,6 +19,46 @@ export function formatDbTimestamp(date: Date = new Date()): string {
 }
 
 /**
+ * Форматирует дату обновления базы данных в строгий формат по ТЗ:
+ * «Дата: ДД-ММ-ГГГГ, Время: ЧЧ:ММ:СС»
+ * Например: Дата: 06-09-2026, Время: 10:37:29
+ */
+export function formatDbUpdateDateTime(dateInput?: string | Date | null): string {
+  if (!dateInput) return 'Дата: —';
+  try {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    
+    // Если строка уже в формате «Дата: ДД-ММ-ГГГГ, Время: ЧЧ:ММ:СС»
+    if (typeof dateInput === 'string' && dateInput.startsWith('Дата: ')) {
+      return dateInput;
+    }
+
+    // Если передана строка в формате «дд.мм.гггг_чч.мм.сс»
+    if (typeof dateInput === 'string' && /^\d{2}\.\d{2}\.\d{4}_\d{2}\.\d{2}\.\d{2}$/.test(dateInput)) {
+      const [dPart, tPart] = dateInput.split('_');
+      const [day, month, year] = dPart.split('.');
+      const [hours, minutes, seconds] = tPart.split('.');
+      return `Дата: ${day}-${month}-${year}, Время: ${hours}:${minutes}:${seconds}`;
+    }
+
+    const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    if (isNaN(d.getTime())) {
+      return String(dateInput);
+    }
+    const day = pad(d.getDate());
+    const month = pad(d.getMonth() + 1);
+    const year = d.getFullYear();
+    const hours = pad(d.getHours());
+    const minutes = pad(d.getMinutes());
+    const seconds = pad(d.getSeconds());
+
+    return `Дата: ${day}-${month}-${year}, Время: ${hours}:${minutes}:${seconds}`;
+  } catch {
+    return String(dateInput || '—');
+  }
+}
+
+/**
  * Форматирует дату в формат «дд.мм.гггг» (для отображения в таблицах и карточках)
  */
 export function formatDateRussian(dateStr?: string | null): string {

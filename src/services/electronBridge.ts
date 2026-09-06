@@ -46,11 +46,11 @@ const INITIAL_DATA = {
     { id: 5, name: 'Отдел технической поддержки', shortName: 'ОТП', organizationId: 5 },
   ],
   employees: [
-    { id: 1, fullName: 'Иванов Иван Иванович', departmentShortName: 'УДО', organizationId: 1 },
-    { id: 2, fullName: 'Смирнова Елена Александровна', departmentShortName: 'ОИБ', organizationId: 1 },
-    { id: 3, fullName: 'Кузнецов Алексей Владимирович', departmentShortName: 'ЮД', organizationId: 1 },
-    { id: 4, fullName: 'Петров Сергей Николаевич', departmentShortName: 'ДСИ', organizationId: 2 },
-    { id: 5, fullName: 'Васильева Ольга Дмитриевна', departmentShortName: 'ОТП', organizationId: 5 },
+    { id: 1, fullName: 'Иванов Иван Иванович', position: 'Главный специалист', departmentShortName: 'УДО', organizationId: 1 },
+    { id: 2, fullName: 'Смирнова Елена Александровна', position: 'Начальник отдела', departmentShortName: 'ОИБ', organizationId: 1 },
+    { id: 3, fullName: 'Кузнецов Алексей Владимирович', position: 'Ведущий юрисконсульт', departmentShortName: 'ЮД', organizationId: 1 },
+    { id: 4, fullName: 'Петров Сергей Николаевич', position: 'Системный архитектор', departmentShortName: 'ДСИ', organizationId: 2 },
+    { id: 5, fullName: 'Васильева Ольга Дмитриевна', position: 'Инженер техподдержки', departmentShortName: 'ОТП', organizationId: 5 },
   ],
   docTypes: [
     { id: 1, name: 'Входящее письмо' },
@@ -158,7 +158,7 @@ class WebMockDatabase implements ElectronAPI {
       this.saveConfig(this.config);
     }
 
-    this.lastUpdateTime = localStorage.getItem(STORAGE_KEYS.LAST_UPDATE) || formatDbTimestamp();
+    this.lastUpdateTime = localStorage.getItem(STORAGE_KEYS.LAST_UPDATE) || new Date().toISOString();
 
     // Инициализация логов
     const savedLogs = localStorage.getItem(STORAGE_KEYS.LOGS);
@@ -234,7 +234,7 @@ class WebMockDatabase implements ElectronAPI {
   }
 
   private touchUpdateTime(): string {
-    const timestamp = formatDbTimestamp();
+    const timestamp = new Date().toISOString();
     this.lastUpdateTime = timestamp;
     localStorage.setItem(STORAGE_KEYS.LAST_UPDATE, timestamp);
     return timestamp;
@@ -247,7 +247,7 @@ class WebMockDatabase implements ElectronAPI {
 
   async getDbStatus() {
     return {
-      lastUpdated: this.lastUpdateTime || formatDbTimestamp(),
+      lastUpdated: this.lastUpdateTime || new Date().toISOString(),
       isNetwork: this.config.isNetworkPath,
       isAccessible: this.config.isAccessible,
       path: this.config.dbPath,
@@ -331,10 +331,18 @@ class WebMockDatabase implements ElectronAPI {
     };
   }
 
-  async refreshDb(): Promise<{ success: boolean; timestamp: string }> {
+  async refreshDb(): Promise<{ success: boolean; timestamp: string; message?: string }> {
+    // Небольшая задержка для имитации сетевого запроса к файлу БД
+    await new Promise((r) => setTimeout(r, 200));
     const timestamp = this.touchUpdateTime();
-    await this.addLog('info', 'db', `Принудительное обновление данных из БД (${timestamp})`);
-    return { success: true, timestamp };
+    const docs = await this.getDocuments();
+    const orgs = await this.getOrganizations();
+    await this.addLog(
+      'info',
+      'db',
+      `Принудительное обновление данных из БД SQLite: перечитано документов: ${docs.length}, организаций: ${orgs.length} (${timestamp})`
+    );
+    return { success: true, timestamp, message: `База данных успешно обновлена (документов: ${docs.length})` };
   }
 
   // --- Справочник: Организации ---
@@ -529,6 +537,7 @@ class WebMockDatabase implements ElectronAPI {
       saved = {
         ...list[idx],
         ...emp,
+        position: emp.position !== undefined ? emp.position.trim() : list[idx].position,
         organizationName: org.name,
         updatedAt: now,
       };
@@ -539,6 +548,7 @@ class WebMockDatabase implements ElectronAPI {
       saved = {
         id: newId,
         fullName: emp.fullName.trim(),
+        position: emp.position ? emp.position.trim() : '',
         departmentShortName: emp.departmentShortName.trim(),
         organizationId: emp.organizationId,
         organizationName: org.name,

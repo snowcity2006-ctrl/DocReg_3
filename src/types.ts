@@ -26,6 +26,7 @@ export interface Department {
 export interface Employee {
   id: number;
   fullName: string; // Сотрудник (обязательно *)
+  position?: string; // Должность (по ТЗ)
   departmentShortName: string; // Сокращенное название СП (обязательно *)
   organizationId: number; // Организация (обязательно *)
   organizationName?: string; // Название организации для отображения

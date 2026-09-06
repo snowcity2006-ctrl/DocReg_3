@@ -24,6 +24,7 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
   initialData,
 }) => {
   const [fullName, setFullName] = useState('');
+  const [position, setPosition] = useState('');
   const [departmentShortName, setDepartmentShortName] = useState('');
   const [organizationId, setOrganizationId] = useState<number | ''>('');
   const [error, setError] = useState<string | null>(null);
@@ -34,10 +35,12 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
     if (!isOpen) return;
     if (initialData) {
       setFullName(initialData.fullName || '');
+      setPosition(initialData.position || '');
       setDepartmentShortName(initialData.departmentShortName || '');
       setOrganizationId(initialData.organizationId || '');
     } else {
       setFullName('');
+      setPosition('');
       const firstOrgId = organizations.length > 0 ? organizations[0].id : '';
       setOrganizationId(firstOrgId);
       const filteredDepts = departments.filter((d) => !firstOrgId || d.organizationId === firstOrgId);
@@ -82,6 +85,7 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
       await onSave({
         id: initialData ? initialData.id : undefined,
         fullName: fullName.trim(),
+        position: position.trim(),
         departmentShortName: departmentShortName.trim(),
         organizationId: Number(organizationId),
       });
@@ -150,6 +154,19 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Например: Иванов Иван Иванович"
+              className="w-full px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+              Должность
+            </label>
+            <input
+              type="text"
+              value={position}
+              onChange={(e) => setPosition(e.target.value)}
+              placeholder="Например: Главный специалист, Начальник отдела"
               className="w-full px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>

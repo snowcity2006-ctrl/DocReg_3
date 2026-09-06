@@ -27,7 +27,7 @@ import {
 } from './types';
 import { electronBridge } from './services/electronBridge';
 import { useTheme } from './hooks/useTheme';
-import { formatDbTimestamp } from './utils/date';
+import { formatDbTimestamp, formatDbUpdateDateTime } from './utils/date';
 import { Navbar } from './components/Navbar';
 import { DbConfigModal } from './components/DbConfigModal';
 import { LogsModal } from './components/LogsModal';
@@ -122,7 +122,7 @@ export default function App() {
       setDirections(dirs);
       setDocuments(docs);
       if (status.lastUpdated) {
-        setLastUpdateTime(status.lastUpdated);
+        setLastUpdateTime(formatDbUpdateDateTime(status.lastUpdated));
       }
     } catch (err: any) {
       console.error('Error loading data:', err);
@@ -148,7 +148,7 @@ export default function App() {
         electronBridge.getDocuments(),
       ]);
 
-      const updatedTime = refreshRes?.timestamp || status.lastUpdated || formatDbTimestamp();
+      const updatedTime = formatDbUpdateDateTime(refreshRes?.timestamp || status.lastUpdated || new Date());
       setLastUpdateTime(updatedTime);
       setDbStatus(status);
       setOrganizations(orgs);
@@ -427,8 +427,19 @@ export default function App() {
             </button>
           </div>
 
-          {/* Кнопка регистрации нового документа и журнал логов */}
+          {/* Кнопка ручного обновления, регистрации нового документа и журнал логов */}
           <div className="flex items-center gap-2">
+            <button
+              id="btn-main-refresh-data"
+              onClick={handleManualRefresh}
+              disabled={isRefreshingDb}
+              title={`Обновить базу данных и синхронизировать все формы (Последнее обновление: ${lastUpdateTime})`}
+              className="px-3 py-2 bg-[#0F1115] hover:bg-[#1F222B] text-blue-400 hover:text-blue-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer border border-blue-900/40 hover:border-blue-700/60 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingDb ? 'animate-spin text-blue-400' : ''}`} />
+              <span className="hidden sm:inline">{isRefreshingDb ? 'Обновление...' : 'Обновить БД'}</span>
+            </button>
+
             <button
               onClick={() => setLogsModalOpen(true)}
               title="Открыть системный журнал логов"
