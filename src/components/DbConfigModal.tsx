@@ -11,6 +11,10 @@ import {
   X,
   Sliders,
   Check,
+  FileText,
+  Network,
+  Archive,
+  CornerDownRight,
 } from 'lucide-react';
 import { DatabaseConfig } from '../types';
 import { electronBridge } from '../services/electronBridge';
@@ -59,17 +63,90 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
     }
   };
 
-  const handleSelectFile = async () => {
+  // Выбор папки для сохранения основного файла БД на сетевых или локальных дисках
+  const handleSelectFolderForDb = async () => {
     try {
-      const selected = await electronBridge.selectDatabaseFile();
+      const selected = await electronBridge.selectDatabaseFolder();
       if (selected) {
-        setDbPath(selected);
+        // Сохраняем имя файла если оно уже было задано в dbPath
+        let filename = 'company_docs.sqlite';
+        if (dbPath.trim()) {
+          const cleanPath = dbPath.trim().replace(/\\/g, '/');
+          const lastSegment = cleanPath.split('/').pop();
+          if (lastSegment && (lastSegment.endsWith('.sqlite') || lastSegment.endsWith('.db') || lastSegment.endsWith('.sqlite3'))) {
+            filename = lastSegment;
+          }
+        }
+        const normalizedFolder = selected.replace(/\\/g, '/');
+        const folderWithSlash = normalizedFolder.endsWith('/') ? normalizedFolder : `${normalizedFolder}/`;
+        const newPath = `${folderWithSlash}${filename}`;
+        setDbPath(newPath);
         setTestResult(null);
         setError(null);
       }
     } catch (err: any) {
-      setError(`Ошибка диалога выбора файла: ${err.message}`);
+      setError(`Ошибка диалога выбора папки БД: ${err.message}`);
     }
+  };
+
+  // Выбор существующего файла БД через проводник ОС
+  const handleSelectFileForDb = async () => {
+    try {
+      const selected = await electronBridge.selectDatabaseFile();
+      if (selected) {
+        setDbPath(selected.replace(/\\/g, '/'));
+        setTestResult(null);
+        setError(null);
+      }
+    } catch (err: any) {
+      setError(`Ошибка диалога выбора файла БД: ${err.message}`);
+    }
+  };
+
+  // Выбор папки для сохранения резервной копии БД
+  const handleSelectBackupFolder = async () => {
+    try {
+      const selected = await electronBridge.selectBackupFolder();
+      if (selected) {
+        setBackupFolder(selected.replace(/\\/g, '/'));
+        setError(null);
+      }
+    } catch (err: any) {
+      setError(`Ошибка выбора папки бэкапов: ${err.message}`);
+    }
+  };
+
+  // Автоматическая установка папки бэкапа рядом с БД (/backup)
+  const handleDefaultBackupFolder = () => {
+    if (dbPath.trim()) {
+      const normalized = dbPath.trim().replace(/\\/g, '/');
+      const parts = normalized.split('/');
+      parts.pop();
+      const parentDir = parts.join('/');
+      setBackupFolder(parentDir ? `${parentDir}/backup` : '/mnt/smb_share/docflow/backup');
+    } else {
+      setBackupFolder('/mnt/smb_share/docflow/backup');
+    }
+  };
+
+  // Быстрый выбор стандартного сетевого пути
+  const handleQuickNetworkPath = (networkDir: string) => {
+    let filename = 'company_docs.sqlite';
+    if (dbPath.trim()) {
+      const cleanPath = dbPath.trim().replace(/\\/g, '/');
+      const lastSegment = cleanPath.split('/').pop();
+      if (lastSegment && (lastSegment.endsWith('.sqlite') || lastSegment.endsWith('.db') || lastSegment.endsWith('.sqlite3'))) {
+        filename = lastSegment;
+      }
+    }
+    const withSlash = networkDir.endsWith('/') || networkDir.endsWith('\\') ? networkDir : `${networkDir}/`;
+    setDbPath(`${withSlash}${filename}`);
+    setTestResult(null);
+  };
+
+  const isNetworkPath = (pathStr: string) => {
+    const p = pathStr.toLowerCase();
+    return p.startsWith('//') || p.startsWith('\\\\') || p.includes('/mnt/') || p.includes('smb') || p.includes('nfs');
   };
 
   const handleTestConnection = async () => {
@@ -102,7 +179,17 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
     setSaving(true);
     setError(null);
     try {
-      const res = await electronBridge.setDbPath(dbPath.trim());
+      const configPayload: Partial<DatabaseConfig> = {
+        dbPath: dbPath.trim(),
+        backupFolder: backupFolder.trim() || undefined,
+        busyTimeout,
+        autoBackupOnStart: autoBackup,
+      };
+
+      const res = electronBridge.saveDbConfig
+        ? await electronBridge.saveDbConfig(configPayload)
+        : await electronBridge.setDbPath(dbPath.trim());
+
       if (res.success) {
         if (res.config && onConfigSaved) {
           onConfigSaved(res.config);
@@ -112,7 +199,7 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
         }
         onClose();
       } else {
-        setError(res.message || 'Не удалось сохранить путь к базе данных');
+        setError(res.message || 'Не удалось сохранить параметры базы данных');
       }
     } catch (err: any) {
       setError(`Ошибка сохранения: ${err.message}`);
@@ -122,6 +209,9 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
   };
 
   if (!isOpen) return null;
+
+  const isDbNetwork = isNetworkPath(dbPath);
+  const isBackupNetwork = isNetworkPath(backupFolder);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
@@ -165,37 +255,168 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
             </div>
           )}
 
-          {/* Путь к базе данных */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-              Путь к файлу базы данных (.sqlite) на сетевом диске <span className="text-rose-500">*</span>
-            </label>
+          {/* 1. Выбор папки или файла для сохранения основного файла БД */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-semibold text-gray-300">
+                Путь к основному файлу базы данных (.sqlite) <span className="text-rose-500">*</span>
+              </label>
+              {isDbNetwork && (
+                <span className="inline-flex items-center gap-1 text-[11px] text-blue-400 bg-blue-950/50 px-2 py-0.5 rounded-md border border-blue-800/40">
+                  <Network className="w-3 h-3" />
+                  Сетевой диск (SMB/NFS)
+                </span>
+              )}
+            </div>
+
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <input
+                  id="input-db-path"
                   type="text"
                   value={dbPath}
                   onChange={(e) => {
                     setDbPath(e.target.value);
                     setTestResult(null);
                   }}
-                  placeholder="/mnt/network_share/docflow/company_docs.sqlite или \\server\share\db.sqlite"
+                  placeholder="/mnt/smb_share/docflow/company_docs.sqlite или \\server\share\docflow\company_docs.sqlite"
                   className="w-full px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs font-mono text-[#E0E0E0] placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
+
+              {/* Кнопка выбора папки на сетевых/локальных дисках */}
               <button
+                id="btn-select-db-folder"
                 type="button"
-                onClick={handleSelectFile}
-                className="px-3.5 py-2.5 bg-[#0F1115] hover:bg-[#1F222B] text-gray-300 rounded-xl font-medium text-xs flex items-center gap-1.5 transition-colors border border-[#2D3139] cursor-pointer"
-                title="Выбрать файл через проводник ОС"
+                onClick={handleSelectFolderForDb}
+                className="px-3 py-2 bg-[#0F1115] hover:bg-[#1F222B] text-blue-400 hover:text-blue-300 rounded-xl font-medium text-xs flex items-center gap-1.5 transition-colors border border-blue-900/40 hover:border-blue-700/60 cursor-pointer shadow-xs"
+                title="Выбрать папку на сетевом или локальном диске (системное окно ОС)"
               >
-                <Folder className="w-4 h-4 text-blue-400" />
-                <span>Обзор</span>
+                <Folder className="w-4 h-4" />
+                <span>Папка</span>
+              </button>
+
+              {/* Кнопка выбора существующего файла БД */}
+              <button
+                id="btn-select-db-file"
+                type="button"
+                onClick={handleSelectFileForDb}
+                className="px-3 py-2 bg-[#0F1115] hover:bg-[#1F222B] text-gray-300 hover:text-white rounded-xl font-medium text-xs flex items-center gap-1.5 transition-colors border border-[#2D3139] cursor-pointer"
+                title="Выбрать файл базы данных через проводник ОС"
+              >
+                <FileText className="w-4 h-4 text-gray-400" />
+                <span>Файл</span>
               </button>
             </div>
-            <p className="text-[11px] text-gray-400 mt-1.5">
-              Если указанный файл не существует по заданному пути, программа автоматически создаст его и инициализирует структуру таблиц.
+
+            {/* Быстрые сетевые точки монтирования */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-gray-400">
+              <span className="flex items-center gap-1 text-gray-500">
+                <CornerDownRight className="w-3 h-3" />
+                Сетевые диски:
+              </span>
+              <button
+                type="button"
+                onClick={() => handleQuickNetworkPath('/mnt/smb_share/docflow/')}
+                className="px-2 py-0.5 bg-[#0F1115] hover:bg-[#1F222B] text-blue-300/90 rounded border border-[#2D3139] font-mono cursor-pointer transition-colors"
+                title="Использовать точку монтирования SMB"
+              >
+                /mnt/smb_share/docflow/
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickNetworkPath('/mnt/network_share/docflow/')}
+                className="px-2 py-0.5 bg-[#0F1115] hover:bg-[#1F222B] text-blue-300/90 rounded border border-[#2D3139] font-mono cursor-pointer transition-colors"
+                title="Использовать точку монтирования NFS"
+              >
+                /mnt/network_share/docflow/
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickNetworkPath('\\\\server\\docflow\\')}
+                className="px-2 py-0.5 bg-[#0F1115] hover:bg-[#1F222B] text-blue-300/90 rounded border border-[#2D3139] font-mono cursor-pointer transition-colors"
+                title="Использовать UNC-путь Windows"
+              >
+                \\server\docflow\
+              </button>
+            </div>
+
+            <p className="text-[11px] text-gray-400">
+              При выборе папки файл базы данных <span className="text-gray-300 font-mono">company_docs.sqlite</span> будет сохранен в выбранный каталог. Если файл отсутствует, он будет автоматически инициализирован.
             </p>
+          </div>
+
+          {/* 2. Папка для сохранения резервных копий (бэкапов) */}
+          <div className="p-4 bg-[#0F1115]/60 rounded-xl border border-[#2D3139] space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Archive className="w-4 h-4 text-emerald-400" />
+                <span className="text-xs font-semibold text-[#E0E0E0]">
+                  Резервное копирование базы данных
+                </span>
+                {isBackupNetwork && (
+                  <span className="text-[10px] text-emerald-400 bg-emerald-950/50 px-1.5 py-0.5 rounded border border-emerald-900/40">
+                    Сетевой бэкап
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">Автобэкап при старте:</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoBackup}
+                    onChange={(e) => setAutoBackup(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-[#2D3139] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-300 mb-1.5">
+                Папка для сохранения файла резервной копии базы данных (бэкапа)
+              </label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    id="input-backup-folder"
+                    type="text"
+                    value={backupFolder}
+                    onChange={(e) => setBackupFolder(e.target.value)}
+                    placeholder="/mnt/smb_share/docflow/backup или D:\DocFlow_Backups"
+                    className="w-full px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs font-mono text-[#E0E0E0] placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                {/* Кнопка выбора папки для бэкапов через диалог ОС */}
+                <button
+                  id="btn-select-backup-folder"
+                  type="button"
+                  onClick={handleSelectBackupFolder}
+                  className="px-3.5 py-2.5 bg-[#0F1115] hover:bg-[#1F222B] text-emerald-400 hover:text-emerald-300 rounded-xl font-medium text-xs flex items-center gap-1.5 transition-colors border border-emerald-900/40 hover:border-emerald-700/60 cursor-pointer shadow-xs"
+                  title="Выбрать папку для резервных копий через системный проводник ОС"
+                >
+                  <Folder className="w-4 h-4" />
+                  <span>Выбрать папку</span>
+                </button>
+
+                {/* Кнопка быстрой установки рядом с БД */}
+                <button
+                  type="button"
+                  onClick={handleDefaultBackupFolder}
+                  className="px-3 py-2.5 bg-[#0F1115] hover:bg-[#1F222B] text-gray-400 hover:text-gray-200 rounded-xl text-xs transition-colors border border-[#2D3139] cursor-pointer whitespace-nowrap"
+                  title="Установить подкаталог /backup рядом с файлом базы данных"
+                >
+                  Рядом с БД
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1.5">
+                Резервные копии автоматически сохраняются с временной меткой в формате <span className="font-mono text-gray-300">company_docs_backup_ГГГГ-ММ-ДД_ЧЧ-ММ-СС.sqlite</span> в указанный сетевой или локальный каталог.
+              </p>
+            </div>
           </div>
 
           {/* Параметры сетевой многопользовательской блокировки */}
@@ -239,30 +460,6 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
             </p>
           </div>
 
-          {/* Автобэкап при старте */}
-          <div className="flex items-center justify-between p-3.5 bg-[#0F1115]/60 rounded-xl border border-[#2D3139]">
-            <div className="flex items-center gap-2.5">
-              <HardDrive className="w-4 h-4 text-emerald-400" />
-              <div>
-                <p className="text-xs font-semibold text-[#E0E0E0]">
-                  Автоматический бэкап при запуске
-                </p>
-                <p className="text-[11px] text-gray-400">
-                  Создает копию .sqlite в подкаталог /backup перед началом работы
-                </p>
-              </div>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={autoBackup}
-                onChange={(e) => setAutoBackup(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-[#2D3139] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
-            </label>
-          </div>
-
           {/* Результат проверки подключения */}
           {testResult && (
             <div
@@ -291,6 +488,7 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
         {/* Нижняя панель действий */}
         <div className="px-6 py-4 border-t border-[#2D3139] bg-[#12151B]/60 flex items-center justify-between gap-3">
           <button
+            id="btn-test-db-connection"
             type="button"
             onClick={handleTestConnection}
             disabled={testing || !dbPath.trim()}
@@ -327,3 +525,4 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
     </div>
   );
 };
+

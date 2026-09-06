@@ -116,9 +116,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <h1 className="text-base font-bold tracking-tight text-[#E0E0E0] leading-none">
                     DocFlow <span className="text-blue-500">Pro</span>
                   </h1>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 font-mono font-medium border border-blue-500/20">
-                    Astra 1.7/1.8
-                  </span>
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   <div
@@ -182,11 +179,11 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-2 sm:gap-3">
             
             {/* Блок с последним временем обновления БД по ТЗ */}
-            <div className="hidden lg:flex flex-col items-end text-right pr-2">
-              <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">
-                Последнее обновление
+            <div className="hidden sm:flex flex-col items-end text-right pr-1">
+              <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">
+                Обновлено
               </p>
-              <p className="text-xs text-gray-300 tabular-nums font-mono">
+              <p id="label-last-db-update" className="text-xs text-gray-300 tabular-nums font-mono">
                 {displayUpdateTime}
               </p>
             </div>
@@ -195,11 +192,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               id="btn-refresh-db"
               onClick={handleRefresh}
-              disabled={refreshing}
-              title="Обновить данные из базы данных"
-              className="p-2 text-blue-400 hover:text-blue-300 hover:bg-[#2D3139] bg-[#0F1115] rounded-lg transition-colors border border-[#2D3139] cursor-pointer disabled:opacity-50"
+              disabled={refreshing || isRefreshing}
+              title={`Обновить данные из базы данных (Последнее обновление: ${displayUpdateTime})`}
+              className="p-2 text-blue-400 hover:text-blue-300 hover:bg-[#2D3139] bg-[#0F1115] rounded-lg transition-colors border border-[#2D3139] cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
             >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-blue-400' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${(refreshing || isRefreshing) ? 'animate-spin text-blue-400' : ''}`} />
+              <span className="hidden xl:inline text-xs font-medium">Обновить БД</span>
             </button>
 
             {/* Кнопка создания резервной копии (Бэкап) */}

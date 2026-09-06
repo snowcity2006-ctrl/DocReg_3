@@ -27,6 +27,7 @@ import {
 } from './types';
 import { electronBridge } from './services/electronBridge';
 import { useTheme } from './hooks/useTheme';
+import { formatDbTimestamp } from './utils/date';
 import { Navbar } from './components/Navbar';
 import { DbConfigModal } from './components/DbConfigModal';
 import { LogsModal } from './components/LogsModal';
@@ -96,6 +97,10 @@ export default function App() {
     setTimeout(() => setNotification(null), 3500);
   };
 
+  // Состояние ручного обновления базы данных и времени синхронизации
+  const [isRefreshingDb, setIsRefreshingDb] = useState(false);
+  const [lastUpdateTime, setLastUpdateTime] = useState<string>('');
+
   // Загрузка всех данных
   const loadAllData = useCallback(async () => {
     try {
@@ -116,11 +121,61 @@ export default function App() {
       setDocumentTypes(types);
       setDirections(dirs);
       setDocuments(docs);
+      if (status.lastUpdated) {
+        setLastUpdateTime(status.lastUpdated);
+      }
     } catch (err: any) {
       console.error('Error loading data:', err);
       showNotification(`Ошибка загрузки данных: ${err.message}`, 'error');
     }
   }, []);
+
+  // Ручное обновление базы данных по нажатию на кнопку в Navbar
+  const handleManualRefresh = async () => {
+    setIsRefreshingDb(true);
+    try {
+      // 1. Обновляем метку времени и регистрируем событие в базе данных SQLite
+      const refreshRes = await electronBridge.refreshDb();
+
+      // 2. Выполняем полную перезагрузку данных и статуса сетевого диска
+      const [status, orgs, depts, emps, types, dirs, docs] = await Promise.all([
+        electronBridge.getDbStatus(),
+        electronBridge.getOrganizations(),
+        electronBridge.getDepartments(),
+        electronBridge.getEmployees(),
+        electronBridge.getDocumentTypes(),
+        electronBridge.getDirections(),
+        electronBridge.getDocuments(),
+      ]);
+
+      const updatedTime = refreshRes?.timestamp || status.lastUpdated || formatDbTimestamp();
+      setLastUpdateTime(updatedTime);
+      setDbStatus(status);
+      setOrganizations(orgs);
+      setDepartments(depts);
+      setEmployees(emps);
+      setDocumentTypes(types);
+      setDirections(dirs);
+      setDocuments(docs);
+
+      // 3. Синхронизируем открытые карточки и формы
+      if (viewingDoc) {
+        const freshDoc = docs.find((d) => d.id === viewingDoc.id);
+        if (freshDoc) setViewingDoc(freshDoc);
+      }
+      if (editingDoc) {
+        const freshDoc = docs.find((d) => d.id === editingDoc.id);
+        if (freshDoc) setEditingDoc(freshDoc);
+      }
+
+      showNotification(`База данных успешно обновлена (${updatedTime})`, 'success');
+    } catch (err: any) {
+      console.error('Ошибка обновления базы данных:', err);
+      showNotification(`Ошибка обновления БД: ${err.message}`, 'error');
+    } finally {
+      setIsRefreshingDb(false);
+    }
+  };
 
   // Загрузка при старте
   useEffect(() => {
@@ -308,7 +363,10 @@ export default function App() {
         onThemeChange={setTheme}
         onOpenDbConfig={() => setDbConfigOpen(true)}
         onOpenLogs={() => setLogsModalOpen(true)}
-        onRefreshData={loadAllData}
+        onRefreshData={handleManualRefresh}
+        onRefreshDb={handleManualRefresh}
+        refreshing={isRefreshingDb}
+        lastUpdateTime={lastUpdateTime || dbStatus?.lastUpdated}
         onCreateBackup={handleCreateBackup}
       />
 
@@ -471,7 +529,7 @@ export default function App() {
       <DbConfigModal
         isOpen={dbConfigOpen}
         onClose={() => setDbConfigOpen(false)}
-        onSaved={loadAllData}
+        onSaved={handleManualRefresh}
       />
 
       {/* Модальное окно журнала логов */}

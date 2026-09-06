@@ -173,12 +173,27 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
 
   const handleBrowseFile = async () => {
     try {
-      const selected = await electronBridge.selectDocumentFileOrFolder();
+      const selected = electronBridge.selectDocumentFile
+        ? await electronBridge.selectDocumentFile()
+        : await electronBridge.selectDocumentFileOrFolder();
       if (selected) {
         setFilePath(selected);
       }
     } catch (e: any) {
       setError(`Ошибка выбора файла: ${e.message}`);
+    }
+  };
+
+  const handleBrowseFolder = async () => {
+    try {
+      const selected = electronBridge.selectDocumentFolder
+        ? await electronBridge.selectDocumentFolder()
+        : await electronBridge.selectDocumentFileOrFolder();
+      if (selected) {
+        setFilePath(selected);
+      }
+    } catch (e: any) {
+      setError(`Ошибка выбора папки: ${e.message}`);
     }
   };
 
@@ -1091,28 +1106,69 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
           <div className="space-y-3 min-w-0 w-full">
             {/* Путь к сетевой папке/файлу */}
             <div className="min-w-0 w-full">
-              <label className="block font-semibold text-gray-300 mb-1.5 flex items-center gap-1 min-w-0 truncate">
-                <FolderOpen className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                <span className="truncate">Путь к документу (гиперссылка на сетевую папку или файл)</span>
-              </label>
-              <div className="flex gap-2 min-w-0 w-full items-center">
+              <div className="flex items-center justify-between gap-2 mb-1.5 min-w-0">
+                <label className="font-semibold text-gray-300 flex items-center gap-1 min-w-0 truncate text-xs">
+                  <FolderOpen className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                  <span className="truncate">Путь к документу (гиперссылка на сетевую папку или файл)</span>
+                </label>
+                {filePath && (
+                  <button
+                    type="button"
+                    onClick={() => setFilePath('')}
+                    className="text-[11px] text-gray-400 hover:text-rose-400 transition-colors cursor-pointer shrink-0"
+                    title="Очистить поле пути"
+                  >
+                    Очистить
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap sm:flex-nowrap gap-2 min-w-0 w-full items-center">
                 <input
                   type="text"
                   value={filePath}
                   onChange={(e) => setFilePath(e.target.value)}
-                  placeholder="/mnt/network_share/documents/2026/09/doc.pdf или \\server\share\file.docx"
+                  placeholder="/mnt/network_share/documents/2026/09/doc.pdf или /mnt/network_share/documents/2026/09/"
                   className="flex-1 min-w-0 px-3.5 py-2 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs font-mono text-[#E0E0E0] placeholder:text-gray-500 focus:outline-none focus:border-blue-500"
                 />
-                <button
-                  type="button"
-                  onClick={handleBrowseFile}
-                  title="Выбрать файл или папку через проводник ОС"
-                  className="px-3.5 py-2 bg-[#0F1115] hover:bg-[#1F222B] text-gray-300 hover:text-white rounded-xl font-medium text-xs flex items-center gap-1.5 transition-colors border border-[#2D3139] cursor-pointer shrink-0"
-                >
-                  <Paperclip className="w-3.5 h-3.5 text-blue-400" />
-                  <span className="hidden xs:inline sm:inline">Обзор</span>
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleBrowseFile}
+                    title="Открыть окно операционной среды для выбора конкретного файла"
+                    className="px-3 py-2 bg-[#0F1115] hover:bg-[#1F222B] text-gray-300 hover:text-white rounded-xl font-medium text-xs flex items-center gap-1.5 transition-colors border border-[#2D3139] cursor-pointer"
+                  >
+                    <Paperclip className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Файл</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBrowseFolder}
+                    title="Открыть окно операционной среды для выбора папки с файлами"
+                    className="px-3 py-2 bg-[#0F1115] hover:bg-[#1F222B] text-gray-300 hover:text-white rounded-xl font-medium text-xs flex items-center gap-1.5 transition-colors border border-[#2D3139] cursor-pointer"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Папка</span>
+                  </button>
+                </div>
               </div>
+              {/* Индикатор сформированной ссылки: файл или папка */}
+              {filePath && (
+                <div className="mt-1.5 text-[11px] text-gray-400 flex items-center gap-1.5 min-w-0">
+                  {filePath.endsWith('/') || filePath.endsWith('\\') || !/\.[a-zA-Z0-9]{1,8}$/.test(filePath.trim()) ? (
+                    <>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                      <span className="text-emerald-400 font-medium shrink-0">Сформирована ссылка на папку:</span>
+                      <span className="font-mono text-gray-300 truncate">{filePath}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                      <span className="text-blue-400 font-medium shrink-0">Сформирована ссылка на файл:</span>
+                      <span className="font-mono text-gray-300 truncate">{filePath}</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Путь к документу в СЭД с кнопкой/иконкой вставки из буфера обмена */}

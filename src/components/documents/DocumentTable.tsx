@@ -518,15 +518,26 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 {/* Путь к документу (гиперссылка) */}
                 <td className="py-2.5 px-3">
                   {doc.filePath ? (
-                    <button
-                      type="button"
-                      onClick={() => handleOpenFile(doc.filePath)}
-                      title={`Открыть файл/папку: ${doc.filePath}`}
-                      className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 hover:underline max-w-full truncate font-mono text-[11px] cursor-pointer"
-                    >
-                      <FolderOpen className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">{doc.filePath.split('/').pop() || doc.filePath}</span>
-                    </button>
+                    (() => {
+                      const isFolder = doc.filePath.endsWith('/') || doc.filePath.endsWith('\\') || !/\.[a-zA-Z0-9]{1,8}$/.test(doc.filePath.trim());
+                      const cleanPath = doc.filePath.replace(/[/\\]+$/, '');
+                      const displayName = cleanPath.split(/[/\\]/).pop() || doc.filePath;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenFile(doc.filePath)}
+                          title={`Открыть ${isFolder ? 'папку' : 'файл'}: ${doc.filePath}`}
+                          className={`inline-flex items-center gap-1.5 ${isFolder ? 'text-emerald-400 hover:text-emerald-300' : 'text-blue-400 hover:text-blue-300'} hover:underline max-w-full truncate font-mono text-[11px] cursor-pointer`}
+                        >
+                          {isFolder ? (
+                            <FolderOpen className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          ) : (
+                            <FileText className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                          )}
+                          <span className="truncate">{displayName}</span>
+                        </button>
+                      );
+                    })()
                   ) : (
                     <span className="text-gray-500 text-[11px]">—</span>
                   )}

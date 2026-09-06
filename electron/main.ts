@@ -188,6 +188,24 @@ function setupIpcHandlers() {
     return { success: false, message: res.message };
   });
 
+  ipcMain.handle('db:saveConfig', async (_event, newConfig: Partial<DatabaseConfig>) => {
+    let isNet: boolean | undefined = undefined;
+    if (newConfig.dbPath) {
+      const res = await dbManager.connect(newConfig.dbPath);
+      if (!res.success) {
+        return { success: false, message: res.message };
+      }
+      isNet = newConfig.dbPath.startsWith('//') || newConfig.dbPath.startsWith('\\\\') || newConfig.dbPath.includes('/mnt/') || newConfig.dbPath.includes('smb') || newConfig.dbPath.includes('nfs');
+    }
+    const updated = store.setDbConfig({
+      ...newConfig,
+      ...(isNet !== undefined ? { isNetworkPath: isNet } : {}),
+      isAccessible: true,
+      lastConnected: new Date().toISOString(),
+    });
+    return { success: true, message: 'Настройки базы данных успешно сохранены', config: updated };
+  });
+
   ipcMain.handle('db:testConnection', async (_event, targetPath?: string) => {
     const cfg = store.getDbConfig();
     const p = targetPath || cfg.dbPath;
@@ -252,6 +270,55 @@ function setupIpcHandlers() {
     return null;
   });
 
+  ipcMain.handle('dialog:selectDbFolder', async () => {
+    if (!mainWindow) return null;
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: 'Выберите папку для размещения базы данных SQLite на сетевом или локальном диске',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (!res.canceled && res.filePaths.length > 0) {
+      return res.filePaths[0];
+    }
+    return null;
+  });
+
+  ipcMain.handle('dialog:selectBackupFolder', async () => {
+    if (!mainWindow) return null;
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: 'Выберите папку для сохранения резервных копий базы данных на сетевом или локальном диске',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (!res.canceled && res.filePaths.length > 0) {
+      return res.filePaths[0];
+    }
+    return null;
+  });
+
+  ipcMain.handle('dialog:selectDocFile', async () => {
+    if (!mainWindow) return null;
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: 'Выберите конечный файл документа на сетевом или локальном диске',
+      properties: ['openFile'],
+    });
+    if (!res.canceled && res.filePaths.length > 0) {
+      return res.filePaths[0];
+    }
+    return null;
+  });
+
+  ipcMain.handle('dialog:selectDocFolder', async () => {
+    if (!mainWindow) return null;
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: 'Выберите папку с документами на сетевом или локальном диске',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (!res.canceled && res.filePaths.length > 0) {
+      const folderPath = res.filePaths[0];
+      return folderPath.endsWith('/') || folderPath.endsWith('\\') ? folderPath : `${folderPath}/`;
+    }
+    return null;
+  });
+
   ipcMain.handle('dialog:selectDocFileOrFolder', async () => {
     if (!mainWindow) return null;
     const res = await dialog.showOpenDialog(mainWindow, {
@@ -259,7 +326,14 @@ function setupIpcHandlers() {
       properties: ['openFile', 'openDirectory'],
     });
     if (!res.canceled && res.filePaths.length > 0) {
-      return res.filePaths[0];
+      const selected = res.filePaths[0];
+      try {
+        const stat = fs.statSync(selected);
+        if (stat.isDirectory()) {
+          return selected.endsWith('/') || selected.endsWith('\\') ? selected : `${selected}/`;
+        }
+      } catch {}
+      return selected;
     }
     return null;
   });

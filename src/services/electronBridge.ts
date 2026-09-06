@@ -280,6 +280,39 @@ class WebMockDatabase implements ElectronAPI {
     };
   }
 
+  async saveDbConfig(cfg: Partial<DatabaseConfig>): Promise<{ success: boolean; message: string; config?: DatabaseConfig }> {
+    const trimmed = cfg.dbPath !== undefined ? cfg.dbPath.trim() : this.config.dbPath;
+    if (!trimmed) {
+      return { success: false, message: 'Путь к файлу базы данных не может быть пустым' };
+    }
+
+    const isNet = trimmed.startsWith('//') || trimmed.startsWith('\\\\') || trimmed.includes('/mnt/') || trimmed.includes('smb') || trimmed.includes('nfs');
+    this.config = {
+      ...this.config,
+      ...cfg,
+      dbPath: trimmed,
+      backupFolder: cfg.backupFolder !== undefined ? cfg.backupFolder.trim() : this.config.backupFolder,
+      busyTimeout: cfg.busyTimeout !== undefined ? cfg.busyTimeout : this.config.busyTimeout,
+      autoBackupOnStart: cfg.autoBackupOnStart !== undefined ? cfg.autoBackupOnStart : this.config.autoBackupOnStart,
+      isNetworkPath: isNet,
+      isAccessible: true,
+      lastConnected: new Date().toISOString(),
+    };
+    this.saveConfig(this.config);
+    this.touchUpdateTime();
+    await this.addLog(
+      'info',
+      'db',
+      `Сохранены параметры подключения к БД: ${trimmed} (${isNet ? 'Сетевой диск SMB/NFS' : 'Локальный диск'}), бэкапы: ${this.config.backupFolder || 'по умолчанию'}, busy_timeout: ${this.config.busyTimeout}мс`
+    );
+
+    return {
+      success: true,
+      message: `Подключение к БД успешно настроено: ${trimmed}`,
+      config: this.config,
+    };
+  }
+
   async testDbConnection(path?: string): Promise<{ success: boolean; message: string; isNetwork?: boolean; pingMs?: number }> {
     const targetPath = path || this.config.dbPath;
     const isNet = targetPath.startsWith('//') || targetPath.startsWith('\\\\') || targetPath.includes('/mnt/') || targetPath.includes('smb') || targetPath.includes('nfs');
@@ -831,23 +864,290 @@ class WebMockDatabase implements ElectronAPI {
 
   // --- Файловая система и диалоги ОС ---
   async selectDatabaseFile(): Promise<string | null> {
-    // В Electron открывается системный dialog.showOpenDialog. В браузере эмулируем выбор сетевого/локального файла
-    const samplePaths = [
-      '/mnt/smb_share/docflow/company_docs.sqlite',
-      '\\\\server01\\docflow\\shared_database.sqlite',
-      '/home/user/docflow_data/local_network.sqlite',
-    ];
-    return samplePaths[Math.floor(Math.random() * samplePaths.length)];
+    if (typeof document === 'undefined') return '/mnt/smb_share/docflow/company_docs.sqlite';
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.sqlite,.db,.sqlite3,*';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+
+      input.onchange = (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        if (target.files && target.files.length > 0) {
+          const file = target.files[0];
+          const fullPath = (file as any).path;
+          if (fullPath) {
+            if (document.body.contains(input)) document.body.removeChild(input);
+            resolve(fullPath.replace(/\\/g, '/'));
+            return;
+          }
+
+          const fileName = file.name;
+          const finalPath = `/mnt/smb_share/docflow/${fileName}`;
+          if (document.body.contains(input)) document.body.removeChild(input);
+          resolve(finalPath);
+        } else {
+          if (document.body.contains(input)) document.body.removeChild(input);
+          resolve(null);
+        }
+      };
+
+      input.oncancel = () => {
+        if (document.body.contains(input)) document.body.removeChild(input);
+        resolve(null);
+      };
+
+      window.addEventListener(
+        'focus',
+        () => {
+          setTimeout(() => {
+            if (document.body.contains(input)) {
+              document.body.removeChild(input);
+              resolve(null);
+            }
+          }, 1500);
+        },
+        { once: true }
+      );
+
+      input.click();
+    });
+  }
+
+  async selectDatabaseFolder(): Promise<string | null> {
+    if (typeof document === 'undefined') return '/mnt/smb_share/docflow/';
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.setAttribute('webkitdirectory', '');
+      input.setAttribute('directory', '');
+      input.style.display = 'none';
+      document.body.appendChild(input);
+
+      input.onchange = (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        if (target.files && target.files.length > 0) {
+          const file = target.files[0];
+          const fullPath = (file as any).path;
+          if (fullPath) {
+            const normalized = fullPath.replace(/\\/g, '/');
+            const parts = normalized.split('/');
+            parts.pop();
+            const folderPath = parts.join('/') + '/';
+            if (document.body.contains(input)) document.body.removeChild(input);
+            resolve(folderPath);
+            return;
+          }
+
+          const relPath = file.webkitRelativePath || '';
+          const folderName = relPath.split('/')[0] || 'docflow';
+          const folderPath = `/mnt/smb_share/${folderName}/`;
+          if (document.body.contains(input)) document.body.removeChild(input);
+          resolve(folderPath);
+        } else {
+          if (document.body.contains(input)) document.body.removeChild(input);
+          resolve(null);
+        }
+      };
+
+      input.oncancel = () => {
+        if (document.body.contains(input)) document.body.removeChild(input);
+        resolve(null);
+      };
+
+      window.addEventListener(
+        'focus',
+        () => {
+          setTimeout(() => {
+            if (document.body.contains(input)) {
+              document.body.removeChild(input);
+              resolve(null);
+            }
+          }, 1500);
+        },
+        { once: true }
+      );
+
+      input.click();
+    });
+  }
+
+  async selectBackupFolder(): Promise<string | null> {
+    if (typeof document === 'undefined') return '/mnt/smb_share/docflow/backup';
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.setAttribute('webkitdirectory', '');
+      input.setAttribute('directory', '');
+      input.style.display = 'none';
+      document.body.appendChild(input);
+
+      input.onchange = (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        if (target.files && target.files.length > 0) {
+          const file = target.files[0];
+          const fullPath = (file as any).path;
+          if (fullPath) {
+            const normalized = fullPath.replace(/\\/g, '/');
+            const parts = normalized.split('/');
+            parts.pop();
+            const folderPath = parts.join('/') + '/backup';
+            if (document.body.contains(input)) document.body.removeChild(input);
+            resolve(folderPath);
+            return;
+          }
+
+          const relPath = file.webkitRelativePath || '';
+          const folderName = relPath.split('/')[0] || 'docflow';
+          const folderPath = `/mnt/smb_share/${folderName}/backup`;
+          if (document.body.contains(input)) document.body.removeChild(input);
+          resolve(folderPath);
+        } else {
+          if (document.body.contains(input)) document.body.removeChild(input);
+          resolve(null);
+        }
+      };
+
+      input.oncancel = () => {
+        if (document.body.contains(input)) document.body.removeChild(input);
+        resolve(null);
+      };
+
+      window.addEventListener(
+        'focus',
+        () => {
+          setTimeout(() => {
+            if (document.body.contains(input)) {
+              document.body.removeChild(input);
+              resolve(null);
+            }
+          }, 1500);
+        },
+        { once: true }
+      );
+
+      input.click();
+    });
+  }
+
+  async selectDocumentFile(): Promise<string | null> {
+    if (typeof document === 'undefined') return null;
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+
+      input.onchange = (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        if (target.files && target.files.length > 0) {
+          const file = target.files[0];
+          // Если запущен в Electron или среде с прямым доступом к FS
+          const fullPath = (file as any).path;
+          if (fullPath) {
+            if (document.body.contains(input)) document.body.removeChild(input);
+            resolve(fullPath);
+            return;
+          }
+
+          // В веб-браузере формируем сетевую гиперссылку к выбранному файлу
+          const fileName = file.name;
+          const currentYear = new Date().getFullYear();
+          const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+          const finalPath = `/mnt/network_share/documents/${currentYear}/${currentMonth}/${fileName}`;
+          if (document.body.contains(input)) document.body.removeChild(input);
+          resolve(finalPath);
+        } else {
+          if (document.body.contains(input)) document.body.removeChild(input);
+          resolve(null);
+        }
+      };
+
+      input.oncancel = () => {
+        if (document.body.contains(input)) document.body.removeChild(input);
+        resolve(null);
+      };
+
+      // Страховочная очистка
+      window.addEventListener(
+        'focus',
+        () => {
+          setTimeout(() => {
+            if (document.body.contains(input)) {
+              document.body.removeChild(input);
+              resolve(null);
+            }
+          }, 1500);
+        },
+        { once: true }
+      );
+
+      input.click();
+    });
+  }
+
+  async selectDocumentFolder(): Promise<string | null> {
+    if (typeof document === 'undefined') return null;
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.setAttribute('webkitdirectory', '');
+      input.setAttribute('directory', '');
+      input.style.display = 'none';
+      document.body.appendChild(input);
+
+      input.onchange = (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        if (target.files && target.files.length > 0) {
+          const file = target.files[0];
+          const fullPath = (file as any).path;
+          if (fullPath) {
+            const normalized = fullPath.replace(/\\/g, '/');
+            const parts = normalized.split('/');
+            parts.pop(); // удаляем имя файла
+            const folderPath = parts.join('/') + '/';
+            if (document.body.contains(input)) document.body.removeChild(input);
+            resolve(folderPath);
+            return;
+          }
+
+          const relPath = file.webkitRelativePath || '';
+          const folderName = relPath.split('/')[0] || 'network_folder';
+          const currentYear = new Date().getFullYear();
+          const folderPath = `/mnt/network_share/documents/${currentYear}/${folderName}/`;
+          if (document.body.contains(input)) document.body.removeChild(input);
+          resolve(folderPath);
+        } else {
+          if (document.body.contains(input)) document.body.removeChild(input);
+          resolve(null);
+        }
+      };
+
+      input.oncancel = () => {
+        if (document.body.contains(input)) document.body.removeChild(input);
+        resolve(null);
+      };
+
+      window.addEventListener(
+        'focus',
+        () => {
+          setTimeout(() => {
+            if (document.body.contains(input)) {
+              document.body.removeChild(input);
+              resolve(null);
+            }
+          }, 1500);
+        },
+        { once: true }
+      );
+
+      input.click();
+    });
   }
 
   async selectDocumentFileOrFolder(): Promise<string | null> {
-    const sampleFiles = [
-      '/mnt/network_share/documents/2026/Outgoing_Request_0089.pdf',
-      '/mnt/network_share/orders/2026/Order_45_Deploy.pdf',
-      '/mnt/network_share/contracts/2026/Contract_91A.pdf',
-      '/mnt/network_share/scans/Incoming_Scan_00452.jpg',
-    ];
-    return sampleFiles[Math.floor(Math.random() * sampleFiles.length)];
+    return this.selectDocumentFile();
   }
 
   async openPath(path: string): Promise<{ success: boolean; message?: string }> {

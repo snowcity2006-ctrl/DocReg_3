@@ -140,6 +140,7 @@ export interface ElectronAPI {
   getDbConfig: () => Promise<DatabaseConfig>;
   getDbStatus: () => Promise<DbStatus>;
   setDbPath: (path: string) => Promise<{ success: boolean; message: string; config?: DatabaseConfig }>;
+  saveDbConfig: (config: Partial<DatabaseConfig>) => Promise<{ success: boolean; message: string; config?: DatabaseConfig }>;
   testDbConnection: (path?: string) => Promise<{ success: boolean; message: string; isNetwork?: boolean; pingMs?: number }>;
   refreshDb: () => Promise<{ success: boolean; timestamp: string }>;
   
@@ -177,6 +178,10 @@ export interface ElectronAPI {
 
   // Файловая система и ОС диалоги
   selectDatabaseFile: () => Promise<string | null>;
+  selectDatabaseFolder: () => Promise<string | null>;
+  selectBackupFolder: () => Promise<string | null>;
+  selectDocumentFile: () => Promise<string | null>;
+  selectDocumentFolder: () => Promise<string | null>;
   selectDocumentFileOrFolder: () => Promise<string | null>;
   openPath: (path: string) => Promise<{ success: boolean; message?: string }>;
   openExternal: (url: string) => Promise<{ success: boolean; message?: string }>;

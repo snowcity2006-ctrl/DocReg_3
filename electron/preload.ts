@@ -9,6 +9,7 @@ const api: ElectronAPI = {
   getDbConfig: () => ipcRenderer.invoke('db:getConfig'),
   getDbStatus: () => ipcRenderer.invoke('db:getStatus'),
   setDbPath: (path: string) => ipcRenderer.invoke('db:setPath', path),
+  saveDbConfig: (config) => ipcRenderer.invoke('db:saveConfig', config),
   testDbConnection: (path?: string) => ipcRenderer.invoke('db:testConnection', path),
   refreshDb: () => ipcRenderer.invoke('db:refresh'),
 
@@ -46,6 +47,10 @@ const api: ElectronAPI = {
 
   // Диалоги ОС и открытие файлов
   selectDatabaseFile: () => ipcRenderer.invoke('dialog:selectDbFile'),
+  selectDatabaseFolder: () => ipcRenderer.invoke('dialog:selectDbFolder'),
+  selectBackupFolder: () => ipcRenderer.invoke('dialog:selectBackupFolder'),
+  selectDocumentFile: () => ipcRenderer.invoke('dialog:selectDocFile'),
+  selectDocumentFolder: () => ipcRenderer.invoke('dialog:selectDocFolder'),
   selectDocumentFileOrFolder: () => ipcRenderer.invoke('dialog:selectDocFileOrFolder'),
   openPath: (filePath: string) => ipcRenderer.invoke('shell:openPath', filePath),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),

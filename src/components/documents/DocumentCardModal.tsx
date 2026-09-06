@@ -224,28 +224,40 @@ export const DocumentCardModal: React.FC<DocumentCardModalProps> = ({
           {/* Ссылки на файлы и СЭД */}
           <div className="space-y-2">
             {doc.filePath ? (
-              <div className="p-3 bg-[#0F1115] rounded-xl border border-blue-500/30 flex items-center justify-between">
-                <div className="flex items-center gap-2 overflow-hidden pr-2">
-                  <FolderOpen className="w-4 h-4 text-blue-400 shrink-0" />
-                  <div className="truncate">
-                    <span className="text-[10px] text-gray-400 block">Файл документа на сетевом диске</span>
-                    <span className="font-mono text-blue-400 font-medium truncate block">
-                      {doc.filePath}
-                    </span>
+              (() => {
+                const isFolder = doc.filePath.endsWith('/') || doc.filePath.endsWith('\\') || !/\.[a-zA-Z0-9]{1,8}$/.test(doc.filePath.trim());
+                return (
+                  <div className={`p-3 bg-[#0F1115] rounded-xl border ${isFolder ? 'border-emerald-500/30' : 'border-blue-500/30'} flex items-center justify-between`}>
+                    <div className="flex items-center gap-2 overflow-hidden pr-2">
+                      {isFolder ? (
+                        <FolderOpen className="w-4 h-4 text-emerald-400 shrink-0" />
+                      ) : (
+                        <FileText className="w-4 h-4 text-blue-400 shrink-0" />
+                      )}
+                      <div className="truncate">
+                        <span className="text-[10px] text-gray-400 block">
+                          {isFolder ? 'Сетевая папка документа' : 'Файл документа на сетевом диске'}
+                        </span>
+                        <span className={`font-mono ${isFolder ? 'text-emerald-400' : 'text-blue-400'} font-medium truncate block`}>
+                          {doc.filePath}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleOpenFile}
+                      className={`px-3 py-1.5 ${isFolder ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-lg font-medium text-[11px] flex items-center gap-1 shrink-0 transition-colors cursor-pointer`}
+                      title={isFolder ? 'Открыть папку в ОС' : 'Открыть файл в ОС'}
+                    >
+                      <span>{isFolder ? 'Открыть папку' : 'Открыть'}</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </button>
                   </div>
-                </div>
-                <button
-                  onClick={handleOpenFile}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-[11px] flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
-                >
-                  <span>Открыть</span>
-                  <ExternalLink className="w-3 h-3" />
-                </button>
-              </div>
+                );
+              })()
             ) : (
               <div className="p-3 bg-[#0F1115] rounded-xl border border-[#2D3139] text-gray-400 flex items-center gap-2">
                 <FolderOpen className="w-4 h-4" />
-                <span>Файл документа не прикреплен</span>
+                <span>Файл или папка документа не прикреплены</span>
               </div>
             )}
 
