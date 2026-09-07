@@ -176,7 +176,7 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
             <label className="block text-xs font-semibold text-gray-300 mb-1.5">
               Организация <span className="text-rose-500">*</span>
             </label>
-            <div className="flex gap-2">
+            <div className="flex gap-2 w-full min-w-0 items-center">
               <select
                 required
                 value={organizationId}
@@ -187,11 +187,11 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
                   const filtered = departments.filter((d) => d.organizationId === newOrgId);
                   setDepartmentShortName(filtered.length > 0 ? filtered[0].shortName : '');
                 }}
-                className="flex-1 px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="flex-1 w-0 min-w-0 px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] focus:outline-none focus:ring-1 focus:ring-blue-500 truncate"
               >
                 <option value="" className="bg-[#171A21] text-gray-400">-- Выберите организацию --</option>
                 {organizations.map((org) => (
-                  <option key={org.id} value={org.id} className="bg-[#171A21] text-[#E0E0E0]">
+                  <option key={org.id} value={org.id} className="bg-[#171A21] text-[#E0E0E0]" title={org.name}>
                     {org.name}
                   </option>
                 ))}
@@ -213,18 +213,19 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
             <label className="block text-xs font-semibold text-gray-300 mb-1.5">
               Структурное подразделение (Сокращенное СП) <span className="text-rose-500">*</span>
             </label>
-            <div className="flex gap-2">
+            <div className="flex gap-2 w-full min-w-0 items-center">
               {availableDepartments.length > 0 ? (
                 <select
                   required
                   value={departmentShortName}
                   onChange={(e) => setDepartmentShortName(e.target.value)}
-                  className="flex-1 px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] focus:outline-none focus:ring-1 focus:ring-blue-500 truncate"
+                  className="flex-1 w-0 min-w-0 px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] focus:outline-none focus:ring-1 focus:ring-blue-500 truncate"
+                  title={availableDepartments.find((d) => d.shortName === departmentShortName)?.name}
                 >
                   <option value="" className="bg-[#171A21] text-gray-400">-- Выберите СП --</option>
                   {availableDepartments.map((dept) => (
                     <option key={dept.id} value={dept.shortName} className="bg-[#171A21] text-[#E0E0E0]" title={`${dept.shortName} — ${dept.name}`}>
-                      {dept.shortName} — {dept.name}
+                      {dept.shortName} — {dept.name.length > 45 ? `${dept.name.slice(0, 42)}…` : dept.name}
                     </option>
                   ))}
                 </select>
@@ -235,7 +236,7 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
                   value={departmentShortName}
                   onChange={(e) => setDepartmentShortName(e.target.value)}
                   placeholder="Введите сокращенное название СП (например: ОЗИ)"
-                  className="flex-1 px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
+                  className="flex-1 w-0 min-w-0 px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
                 />
               )}
 
@@ -248,6 +249,11 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({
                 <Plus className="w-4 h-4" />
               </button>
             </div>
+            {availableDepartments.find((d) => d.shortName === departmentShortName) && (
+              <p className="text-[11px] text-gray-400 mt-1 truncate" title={availableDepartments.find((d) => d.shortName === departmentShortName)?.name}>
+                Полное наименование: <span className="text-gray-300 font-medium">{availableDepartments.find((d) => d.shortName === departmentShortName)?.name}</span>
+              </p>
+            )}
             {availableDepartments.length === 0 && (
               <p className="text-[11px] text-amber-400 mt-1">
                 Для выбранной организации нет подразделений в справочнике. Нажмите «+» для добавления в справочник или укажите сокращение вручную.

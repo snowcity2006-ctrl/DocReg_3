@@ -54,14 +54,14 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({
     : [];
 
   const normalizedName = name.trim().toLowerCase();
-  const normalizedShortName = shortName.trim().toUpperCase();
+  const normalizedShortName = shortName.trim().toLowerCase();
 
   // Поиск дубликата в выбранной организации (по полному названию или сокращению)
   const duplicateByName = orgDepartments.find(
     (d) => d.id !== initialData?.id && d.name.trim().toLowerCase() === normalizedName
   );
   const duplicateByShortName = orgDepartments.find(
-    (d) => d.id !== initialData?.id && d.shortName.trim().toUpperCase() === normalizedShortName
+    (d) => d.id !== initialData?.id && d.shortName.trim().toLowerCase() === normalizedShortName
   );
 
   const isDuplicate = Boolean(
@@ -103,7 +103,7 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({
       await onSave({
         id: initialData ? initialData.id : undefined,
         name: name.trim(),
-        shortName: shortName.trim().toUpperCase(),
+        shortName: shortName.trim(),
         organizationId: Number(organizationId),
       });
       onClose();
@@ -254,12 +254,12 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({
                 setShortName(e.target.value);
                 if (error) setError(null);
               }}
-              placeholder="Например: ОИБ"
+              placeholder="Например: ОИБ или Отд. ИБ"
               className={`w-full px-3.5 py-2.5 bg-[#0F1115] border ${
                 duplicateByShortName
                   ? 'border-amber-500/80 focus:border-amber-500 ring-1 ring-amber-500/20'
                   : 'border-[#2D3139] focus:ring-1 focus:ring-blue-500'
-              } rounded-xl text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none transition-all font-semibold uppercase`}
+              } rounded-xl text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none transition-all font-semibold`}
             />
           </div>
 
