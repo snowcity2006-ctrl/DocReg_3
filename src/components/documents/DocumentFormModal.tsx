@@ -19,6 +19,7 @@ import {
   CheckSquare,
   Square,
   User,
+  UserCheck,
 } from 'lucide-react';
 import {
   DocumentRecord,
@@ -71,10 +72,15 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
   const [incomingDate, setIncomingDate] = useState('');
   const [subject, setSubject] = useState('');
   
-  // Отправитель: Организация, СП и Исполнитель (Сотрудник)
+  // Отправитель: Организация, СП, Подписал и Исполнитель (Сотрудники)
   const [senderId, setSenderId] = useState<number | ''>('');
   const [senderDepartmentId, setSenderDepartmentId] = useState<number | ''>('');
   const [senderEmployeeId, setSenderEmployeeId] = useState<number | ''>('');
+  const [signatoryEmployeeId, setSignatoryEmployeeId] = useState<number | ''>('');
+
+  // Отслеживание добавления сотрудника для авто-выбора (Подписал / Исполнитель)
+  const [pendingEmployeeTarget, setPendingEmployeeTarget] = useState<'signatory' | 'executor' | null>(null);
+  const prevEmployeesCountRef = useRef(employees.length);
 
   // Множественный выбор получателей (Организации)
   const [recipientIds, setRecipientIds] = useState<number[]>([]);
@@ -131,6 +137,7 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
       setSenderId(initialData.senderId || '');
       setSenderDepartmentId(initialData.senderDepartmentId || '');
       setSenderEmployeeId(initialData.senderEmployeeId || '');
+      setSignatoryEmployeeId(initialData.signatoryEmployeeId || '');
 
       // Инициализация получателей
       if (initialData.recipientIds && initialData.recipientIds.length > 0) {
@@ -158,6 +165,7 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
       setSenderId('');
       setSenderDepartmentId('');
       setSenderEmployeeId('');
+      setSignatoryEmployeeId('');
       setRecipientIds([]);
       setRecipientDepartmentIds([]);
       setFilePath('');
@@ -170,6 +178,23 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
     setRecipientSearchQuery('');
     setDeptSearchQuery('');
   }, [initialData, isOpen, documentTypes, directions]);
+
+  // Автоматический выбор добавленного сотрудника (для «Подписал» или «Исполнитель»)
+  useEffect(() => {
+    if (employees.length > prevEmployeesCountRef.current) {
+      const newestEmp = employees[employees.length - 1];
+      if (newestEmp && pendingEmployeeTarget === 'signatory') {
+        setSignatoryEmployeeId(newestEmp.id);
+        if (!senderId || senderId !== newestEmp.organizationId) {
+          setSenderId(newestEmp.organizationId);
+        }
+      } else if (newestEmp && pendingEmployeeTarget === 'executor') {
+        handleSenderEmployeeChange(newestEmp.id);
+      }
+      setPendingEmployeeTarget(null);
+    }
+    prevEmployeesCountRef.current = employees.length;
+  }, [employees]);
 
   const handleBrowseFile = async () => {
     try {
@@ -295,6 +320,24 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
           setSenderEmployeeId('');
         }
       }
+      if (signatoryEmployeeId) {
+        const emp = employees.find((e) => e.id === signatoryEmployeeId);
+        if (emp && emp.organizationId !== newOrgId) {
+          setSignatoryEmployeeId('');
+        }
+      }
+    }
+  };
+
+  const handleSignatoryEmployeeChange = (newEmpId: number | '') => {
+    setSignatoryEmployeeId(newEmpId);
+    if (newEmpId) {
+      const emp = employees.find((e) => e.id === newEmpId);
+      if (emp) {
+        if (!senderId || senderId !== emp.organizationId) {
+          setSenderId(emp.organizationId);
+        }
+      }
     }
   };
 
@@ -363,6 +406,14 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
     return true;
   });
 
+  // Фильтрация сотрудников для «Подписал» (по организации отправителя, если выбрана)
+  const availableSignatoryEmployees = employees.filter((e) => {
+    if (senderId) {
+      return e.organizationId === senderId;
+    }
+    return true;
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -392,6 +443,10 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
     const senderEmp = employees.find((e) => e.id === senderEmployeeId);
     const senderEmpName = senderEmp ? senderEmp.fullName : undefined;
 
+    // Подписавший сотрудник
+    const signatoryEmp = employees.find((e) => e.id === signatoryEmployeeId);
+    const signatoryEmpName = signatoryEmp ? signatoryEmp.fullName : undefined;
+
     // Составляем строку названий структурных подразделений
     const selectedDepts = departments.filter((d) => recipientDepartmentIds.includes(d.id));
     const recipientDeptNames = selectedDepts.map((d) => d.shortName || d.name).join(', ');
@@ -417,6 +472,8 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
         senderDepartmentName: senderDeptName,
         senderEmployeeId: senderEmployeeId ? Number(senderEmployeeId) : undefined,
         senderEmployeeName: senderEmpName,
+        signatoryEmployeeId: signatoryEmployeeId ? Number(signatoryEmployeeId) : undefined,
+        signatoryEmployeeName: signatoryEmpName,
         // Для обратной совместимости сохраняем первого получателя в recipientId
         recipientId: recipientIds.length > 0 ? recipientIds[0] : undefined,
         recipientName: recipientNames || undefined,
@@ -441,6 +498,7 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
   const selectedSenderOrg = organizations.find((o) => o.id === Number(senderId));
   const selectedSenderDept = departments.find((d) => d.id === Number(senderDepartmentId));
   const selectedSenderEmp = employees.find((e) => e.id === Number(senderEmployeeId));
+  const selectedSignatoryEmp = employees.find((e) => e.id === Number(signatoryEmployeeId));
 
   // Взаимное переключение выпадающих списков получателя и СП (предотвращает их взаимное перекрытие)
   const toggleRecipientDropdown = () => {
@@ -640,13 +698,14 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
                 <Building2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                 <span className="truncate">Отправитель</span>
               </span>
-              {(senderId || senderDepartmentId || senderEmployeeId) && (
+              {(senderId || senderDepartmentId || senderEmployeeId || signatoryEmployeeId) && (
                 <button
                   type="button"
                   onClick={() => {
                     setSenderId('');
                     setSenderDepartmentId('');
                     setSenderEmployeeId('');
+                    setSignatoryEmployeeId('');
                   }}
                   className="text-[11px] text-gray-400 hover:text-rose-400 transition-colors cursor-pointer shrink-0 ml-2"
                 >
@@ -685,20 +744,62 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
               </div>
             </div>
 
-            {/* Выбор СП и Исполнителя: адаптивная сетка с min-w-0 и предотвращением перекрытия элементов */}
+            {/* Структурное подразделение */}
+            <div className="min-w-0 w-full">
+              <div className="flex items-center justify-between gap-2 mb-1 min-w-0">
+                <label className="text-[11px] font-medium text-gray-400 flex items-center gap-1 min-w-0 truncate">
+                  <Layers className="w-3 h-3 text-blue-400 shrink-0" />
+                  <span className="truncate">Структурное подразделение</span>
+                </label>
+                {senderDepartmentId && (
+                  <button
+                    type="button"
+                    onClick={() => setSenderDepartmentId('')}
+                    className="text-[10px] text-gray-500 hover:text-rose-400 transition-colors shrink-0"
+                  >
+                    Сбросить
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2 min-w-0 w-full items-center">
+                <select
+                  value={senderDepartmentId}
+                  onChange={(e) => handleSenderDeptChange(e.target.value ? Number(e.target.value) : '')}
+                  title={selectedSenderDept ? `${selectedSenderDept.shortName} — ${selectedSenderDept.name}` : undefined}
+                  className="w-full min-w-0 flex-1 truncate px-3 py-2 bg-[#171A21] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] focus:outline-none focus:border-blue-500 transition-colors"
+                >
+                  <option value="">-- Не выбрано --</option>
+                  {filteredSenderDepartments.map((dept) => (
+                    <option key={dept.id} value={dept.id} title={`${dept.shortName} — ${dept.name}`}>
+                      {dept.shortName} — {dept.name} {!senderId && dept.organizationName ? `(${dept.organizationName})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={onOpenNewDepartmentModal}
+                  title="Добавить структурное подразделение в справочник"
+                  className="p-2 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30 transition-colors cursor-pointer flex items-center justify-center shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Выбор Подписал и Исполнитель: адаптивная сетка с min-w-0 и предотвращением перекрытия */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4 pt-0.5 min-w-0 w-full">
               
-              {/* Структурное подразделение */}
+              {/* Подписал (Сотрудник) */}
               <div className="min-w-0 w-full flex flex-col justify-between">
                 <div className="flex items-center justify-between gap-2 mb-1 min-w-0">
                   <label className="text-[11px] font-medium text-gray-400 flex items-center gap-1 min-w-0 truncate">
-                    <Layers className="w-3 h-3 text-blue-400 shrink-0" />
-                    <span className="truncate">Структурное подразделение</span>
+                    <UserCheck className="w-3 h-3 text-emerald-400 shrink-0" />
+                    <span className="truncate">Подписал</span>
                   </label>
-                  {senderDepartmentId && (
+                  {signatoryEmployeeId && (
                     <button
                       type="button"
-                      onClick={() => setSenderDepartmentId('')}
+                      onClick={() => setSignatoryEmployeeId('')}
                       className="text-[10px] text-gray-500 hover:text-rose-400 transition-colors shrink-0"
                     >
                       Сбросить
@@ -707,22 +808,25 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
                 </div>
                 <div className="flex gap-2 min-w-0 w-full items-center">
                   <select
-                    value={senderDepartmentId}
-                    onChange={(e) => handleSenderDeptChange(e.target.value ? Number(e.target.value) : '')}
-                    title={selectedSenderDept ? `${selectedSenderDept.shortName} — ${selectedSenderDept.name}` : undefined}
+                    value={signatoryEmployeeId}
+                    onChange={(e) => handleSignatoryEmployeeChange(e.target.value ? Number(e.target.value) : '')}
+                    title={selectedSignatoryEmp ? `${selectedSignatoryEmp.fullName} (${selectedSignatoryEmp.departmentShortName || ''})` : undefined}
                     className="w-full min-w-0 flex-1 truncate px-3 py-2 bg-[#171A21] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] focus:outline-none focus:border-blue-500 transition-colors"
                   >
                     <option value="">-- Не выбрано --</option>
-                    {filteredSenderDepartments.map((dept) => (
-                      <option key={dept.id} value={dept.id} title={`${dept.shortName} — ${dept.name}`}>
-                        {dept.shortName} — {dept.name} {!senderId && dept.organizationName ? `(${dept.organizationName})` : ''}
+                    {(availableSignatoryEmployees.length > 0 ? availableSignatoryEmployees : employees).map((emp) => (
+                      <option key={emp.id} value={emp.id} title={`${emp.fullName} (${emp.departmentShortName})`}>
+                        {emp.fullName} ({emp.departmentShortName}) {!senderId && emp.organizationName ? `— ${emp.organizationName}` : ''}
                       </option>
                     ))}
                   </select>
                   <button
                     type="button"
-                    onClick={onOpenNewDepartmentModal}
-                    title="Добавить структурное подразделение в справочник"
+                    onClick={() => {
+                      setPendingEmployeeTarget('signatory');
+                      onOpenNewEmployeeModal();
+                    }}
+                    title="Добавить сотрудника в справочник"
                     className="p-2 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30 transition-colors cursor-pointer flex items-center justify-center shrink-0"
                   >
                     <Plus className="w-4 h-4" />
@@ -763,7 +867,10 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
                   </select>
                   <button
                     type="button"
-                    onClick={onOpenNewEmployeeModal}
+                    onClick={() => {
+                      setPendingEmployeeTarget('executor');
+                      onOpenNewEmployeeModal();
+                    }}
                     title="Добавить сотрудника в справочник"
                     className="p-2 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30 transition-colors cursor-pointer flex items-center justify-center shrink-0"
                   >

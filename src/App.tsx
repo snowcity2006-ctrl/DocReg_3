@@ -204,11 +204,15 @@ export default function App() {
       const matchInNum = doc.incomingNumber?.toLowerCase().includes(q);
       const matchComments = doc.comments?.toLowerCase().includes(q);
       const matchSender = doc.senderName?.toLowerCase().includes(q);
+      const matchSenderDept = doc.senderDepartmentName?.toLowerCase().includes(q);
+      const matchSenderEmp = doc.senderEmployeeName?.toLowerCase().includes(q);
+      const matchSignatory = doc.signatoryEmployeeName?.toLowerCase().includes(q);
       const matchRecipient = doc.recipientName?.toLowerCase().includes(q);
+      const matchRecipientDept = doc.recipientDepartmentNames?.toLowerCase().includes(q);
       const matchFile = doc.filePath?.toLowerCase().includes(q);
       const matchSed = doc.sedUrl?.toLowerCase().includes(q);
       const matchId = String(doc.id).includes(q);
-      if (!(matchSubject || matchOutNum || matchInNum || matchComments || matchSender || matchRecipient || matchFile || matchSed || matchId)) {
+      if (!(matchSubject || matchOutNum || matchInNum || matchComments || matchSender || matchSenderDept || matchSenderEmp || matchSignatory || matchRecipient || matchRecipientDept || matchFile || matchSed || matchId)) {
         return false;
       }
     }
@@ -427,27 +431,8 @@ export default function App() {
             </button>
           </div>
 
-          {/* Кнопка ручного обновления, регистрации нового документа и журнал логов */}
+          {/* Кнопка регистрации нового документа */}
           <div className="flex items-center gap-2">
-            <button
-              id="btn-main-refresh-data"
-              onClick={handleManualRefresh}
-              disabled={isRefreshingDb}
-              title={`Обновить базу данных и синхронизировать все формы (Последнее обновление: ${lastUpdateTime})`}
-              className="px-3 py-2 bg-[#0F1115] hover:bg-[#1F222B] text-blue-400 hover:text-blue-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer border border-blue-900/40 hover:border-blue-700/60 disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingDb ? 'animate-spin text-blue-400' : ''}`} />
-              <span className="hidden sm:inline">{isRefreshingDb ? 'Обновление...' : 'Обновить БД'}</span>
-            </button>
-
-            <button
-              onClick={() => setLogsModalOpen(true)}
-              title="Открыть системный журнал логов"
-              className="p-2 text-gray-400 hover:text-white hover:bg-[#1F222B] rounded-xl transition-colors cursor-pointer border border-[#2D3139]"
-            >
-              <Terminal className="w-4 h-4" />
-            </button>
-
             <button
               id="btn-register-document"
               onClick={() => {

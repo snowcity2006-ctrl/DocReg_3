@@ -287,6 +287,12 @@ class SQLiteDatabaseManager {
       this.db.exec("ALTER TABLE documents ADD COLUMN sender_emp_name TEXT;");
     } catch {}
     try {
+      this.db.exec("ALTER TABLE documents ADD COLUMN signatory_emp_id INTEGER;");
+    } catch {}
+    try {
+      this.db.exec("ALTER TABLE documents ADD COLUMN signatory_emp_name TEXT;");
+    } catch {}
+    try {
       this.db.exec("ALTER TABLE employees ADD COLUMN position TEXT;");
     } catch {}
 
@@ -485,6 +491,7 @@ class SQLiteDatabaseManager {
              d.subject, d.sender_id as senderId, s.name as senderName,
              d.sender_dept_id as senderDepartmentId, d.sender_dept_name as senderDepartmentName,
              d.sender_emp_id as senderEmployeeId, d.sender_emp_name as senderEmployeeName,
+             d.signatory_emp_id as signatoryEmployeeId, d.signatory_emp_name as signatoryEmployeeName,
              d.recipient_id as recipientId, r.name as recipientName,
              d.recipient_ids as recipientIdsRaw,
              d.recipient_dept_ids as recipientDeptIdsRaw,
@@ -535,6 +542,8 @@ class SQLiteDatabaseManager {
         senderDepartmentName: row.senderDepartmentName || undefined,
         senderEmployeeId: row.senderEmployeeId || undefined,
         senderEmployeeName: row.senderEmployeeName || undefined,
+        signatoryEmployeeId: row.signatoryEmployeeId || undefined,
+        signatoryEmployeeName: row.signatoryEmployeeName || undefined,
         recipientName,
         recipientIds,
         recipientDepartmentIds,
@@ -559,6 +568,7 @@ class SQLiteDatabaseManager {
           doc_type_id = ?, direction_id = ?, outgoing_number = ?, outgoing_date = ?,
           incoming_number = ?, incoming_date = ?, subject = ?, sender_id = ?,
           sender_dept_id = ?, sender_dept_name = ?, sender_emp_id = ?, sender_emp_name = ?,
+          signatory_emp_id = ?, signatory_emp_name = ?,
           recipient_id = ?, recipient_ids = ?, recipient_dept_ids = ?, recipient_dept_names = ?,
           file_path = ?, sed_url = ?, comments = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
@@ -567,6 +577,7 @@ class SQLiteDatabaseManager {
         doc.incomingNumber || null, doc.incomingDate || null, doc.subject, doc.senderId || null,
         doc.senderDepartmentId || null, doc.senderDepartmentName || null,
         doc.senderEmployeeId || null, doc.senderEmployeeName || null,
+        doc.signatoryEmployeeId || null, doc.signatoryEmployeeName || null,
         primaryRecipientId, recipientIdsJson, recipientDeptIdsJson, recipientDeptNames,
         doc.filePath || null, doc.sedUrl || null, doc.comments || null,
         doc.id
@@ -578,14 +589,16 @@ class SQLiteDatabaseManager {
           doc_type_id, direction_id, outgoing_number, outgoing_date,
           incoming_number, incoming_date, subject, sender_id,
           sender_dept_id, sender_dept_name, sender_emp_id, sender_emp_name,
+          signatory_emp_id, signatory_emp_name,
           recipient_id, recipient_ids, recipient_dept_ids, recipient_dept_names,
           file_path, sed_url, comments
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         doc.docTypeId, doc.directionId, doc.outgoingNumber || null, doc.outgoingDate || null,
         doc.incomingNumber || null, doc.incomingDate || null, doc.subject, doc.senderId || null,
         doc.senderDepartmentId || null, doc.senderDepartmentName || null,
         doc.senderEmployeeId || null, doc.senderEmployeeName || null,
+        doc.signatoryEmployeeId || null, doc.signatoryEmployeeName || null,
         primaryRecipientId, recipientIdsJson, recipientDeptIdsJson, recipientDeptNames,
         doc.filePath || null, doc.sedUrl || null, doc.comments || null
       );

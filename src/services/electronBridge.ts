@@ -717,6 +717,12 @@ class WebMockDatabase implements ElectronAPI {
         const sEmp = emps.find((item) => item.id === doc.senderEmployeeId);
         if (sEmp) senderEmployeeName = sEmp.fullName;
       }
+
+      let signatoryEmployeeName = doc.signatoryEmployeeName;
+      if (!signatoryEmployeeName && doc.signatoryEmployeeId) {
+        const signEmp = emps.find((item) => item.id === doc.signatoryEmployeeId);
+        if (signEmp) signatoryEmployeeName = signEmp.fullName;
+      }
       
       let recipientName = '—';
       const rIds = doc.recipientIds && doc.recipientIds.length > 0
@@ -751,6 +757,9 @@ class WebMockDatabase implements ElectronAPI {
         docTypeName: dt ? dt.name : '—',
         directionName: dir ? dir.name : '—',
         senderName: sender ? sender.name : '—',
+        senderDepartmentName,
+        senderEmployeeName,
+        signatoryEmployeeName,
         recipientName,
         recipientIds: rIds,
         recipientDepartmentIds: doc.recipientDepartmentIds || [],
@@ -778,6 +787,8 @@ class WebMockDatabase implements ElectronAPI {
       senderDepartmentName: doc.senderDepartmentName || undefined,
       senderEmployeeId: doc.senderEmployeeId || undefined,
       senderEmployeeName: doc.senderEmployeeName || undefined,
+      signatoryEmployeeId: doc.signatoryEmployeeId || undefined,
+      signatoryEmployeeName: doc.signatoryEmployeeName || undefined,
       recipientId: primaryRecipientId,
       recipientIds: rIds,
       recipientDepartmentIds: doc.recipientDepartmentIds || [],

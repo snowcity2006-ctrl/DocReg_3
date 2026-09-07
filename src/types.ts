@@ -65,6 +65,8 @@ export interface DocumentRecord {
   senderDepartmentName?: string; // Название/краткое наименование СП отправителя
   senderEmployeeId?: number; // Исполнитель (Сотрудник отправителя)
   senderEmployeeName?: string; // ФИО исполнителя
+  signatoryEmployeeId?: number; // Подписал (Сотрудник)
+  signatoryEmployeeName?: string; // ФИО подписавшего
   recipientId?: number; // Получатель (Организация, первый/основной)
   recipientName?: string;
   recipientIds?: number[]; // Множественный выбор получателей (Организаций)

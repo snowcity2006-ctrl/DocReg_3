@@ -484,15 +484,20 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 <td className="py-2.5 px-3 break-words whitespace-normal text-gray-300">
                   <div>
                     <span className="break-words">{doc.senderName || '—'}</span>
-                    {(doc.senderDepartmentName || doc.senderEmployeeName) && (
+                    {(doc.senderDepartmentName || doc.signatoryEmployeeName || doc.senderEmployeeName) && (
                       <div className="mt-1 flex flex-col gap-0.5 text-[10px]">
                         {doc.senderDepartmentName && (
-                          <span className="inline-flex items-center text-blue-400 break-words">
+                          <span className="inline-flex items-center text-blue-400 break-words" title={`Подразделение: ${doc.senderDepartmentName}`}>
                             СП: {doc.senderDepartmentName}
                           </span>
                         )}
+                        {doc.signatoryEmployeeName && (
+                          <span className="inline-flex items-center text-emerald-400/90 break-words font-medium" title={`Подписал: ${doc.signatoryEmployeeName}`}>
+                            Подписал: {doc.signatoryEmployeeName}
+                          </span>
+                        )}
                         {doc.senderEmployeeName && (
-                          <span className="inline-flex items-center text-gray-400 break-words">
+                          <span className="inline-flex items-center text-gray-400 break-words" title={`Исполнитель: ${doc.senderEmployeeName}`}>
                             Исп: {doc.senderEmployeeName}
                           </span>
                         )}

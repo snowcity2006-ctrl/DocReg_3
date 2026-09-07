@@ -184,12 +184,18 @@ export const DocumentCardModal: React.FC<DocumentCardModalProps> = ({
               <p className="font-semibold text-[#E0E0E0]">
                 {doc.senderName || '—'}
               </p>
-              {(doc.senderDepartmentName || doc.senderEmployeeName) && (
+              {(doc.senderDepartmentName || doc.signatoryEmployeeName || doc.senderEmployeeName) && (
                 <div className="mt-2 pt-2 border-t border-[#2D3139]/60 space-y-1">
                   {doc.senderDepartmentName && (
                     <div className="text-xs">
                       <span className="text-gray-400 text-[10px] block mb-0.5">Структурное подразделение:</span>
                       <span className="text-blue-400 font-medium">{doc.senderDepartmentName}</span>
+                    </div>
+                  )}
+                  {doc.signatoryEmployeeName && (
+                    <div className="text-xs">
+                      <span className="text-gray-400 text-[10px] block mb-0.5">Подписал:</span>
+                      <span className="text-emerald-400 font-medium">{doc.signatoryEmployeeName}</span>
                     </div>
                   )}
                   {doc.senderEmployeeName && (
