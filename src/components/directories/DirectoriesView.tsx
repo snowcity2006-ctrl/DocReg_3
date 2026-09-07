@@ -176,7 +176,7 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
     if (!resizingCol.current) return;
     const { tab, colKey, startX, startWidth } = resizingCol.current;
     const delta = e.clientX - startX;
-    const newWidth = Math.max(50, startWidth + delta);
+    const newWidth = Math.max(60, startWidth + delta);
 
     if (tab === 'orgs') {
       setOrgWidths((prev) => {
@@ -464,13 +464,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
                 <tr className="border-b border-[#2D3139] bg-[#0F1115]/60 text-gray-400 font-semibold uppercase tracking-wider">
                   <th
                     style={{ width: orgWidths.id, minWidth: 50 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(orgSort, setOrgSort, 'id')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>ID</span>
+                      <span className="truncate block" title="ID">ID</span>
                       {renderSortIcon('id', orgSort.field, orgSort.asc)}
                     </div>
                     <div
@@ -481,13 +481,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: orgWidths.name, minWidth: 100 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(orgSort, setOrgSort, 'name')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>Организация *</span>
+                      <span className="truncate block" title="Организация">Организация *</span>
                       {renderSortIcon('name', orgSort.field, orgSort.asc)}
                     </div>
                     <div
@@ -498,13 +498,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: orgWidths.director, minWidth: 100 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(orgSort, setOrgSort, 'director')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>Руководитель</span>
+                      <span className="truncate block" title="Руководитель">Руководитель</span>
                       {renderSortIcon('director', orgSort.field, orgSort.asc)}
                     </div>
                     <div
@@ -515,13 +515,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: orgWidths.email, minWidth: 100 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(orgSort, setOrgSort, 'email')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>e-mail</span>
+                      <span className="truncate block" title="e-mail">e-mail</span>
                       {renderSortIcon('email', orgSort.field, orgSort.asc)}
                     </div>
                     <div
@@ -532,9 +532,9 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: orgWidths.actions, minWidth: 70 }}
-                    className="py-3 px-4 text-right"
+                    className="py-3 px-4 text-right overflow-hidden"
                   >
-                    Действия
+                    <span className="truncate block" title="Действия">Действия</span>
                   </th>
                 </tr>
               </thead>
@@ -632,13 +632,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
                 <tr className="border-b border-[#2D3139] bg-[#0F1115]/60 text-gray-400 font-semibold uppercase tracking-wider">
                   <th
                     style={{ width: deptWidths.id, minWidth: 50 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(deptSort, setDeptSort, 'id')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>ID</span>
+                      <span className="truncate block" title="ID">ID</span>
                       {renderSortIcon('id', deptSort.field, deptSort.asc)}
                     </div>
                     <div
@@ -649,13 +649,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: deptWidths.name, minWidth: 120 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(deptSort, setDeptSort, 'name')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>Структурное подразделение *</span>
+                      <span className="truncate block" title="Структурное подразделение">Структурное подразделение *</span>
                       {renderSortIcon('name', deptSort.field, deptSort.asc)}
                     </div>
                     <div
@@ -666,13 +666,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: deptWidths.shortName, minWidth: 100 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(deptSort, setDeptSort, 'shortName')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>Сокращенное название СП *</span>
+                      <span className="truncate block" title="Сокращенное название СП">Сокращенное название СП *</span>
                       {renderSortIcon('shortName', deptSort.field, deptSort.asc)}
                     </div>
                     <div
@@ -683,13 +683,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: deptWidths.org, minWidth: 100 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(deptSort, setDeptSort, 'organizationName')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>Организация *</span>
+                      <span className="truncate block" title="Организация">Организация *</span>
                       {renderSortIcon('organizationName', deptSort.field, deptSort.asc)}
                     </div>
                     <div
@@ -700,9 +700,9 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: deptWidths.actions, minWidth: 70 }}
-                    className="py-3 px-4 text-right"
+                    className="py-3 px-4 text-right overflow-hidden"
                   >
-                    Действия
+                    <span className="truncate block" title="Действия">Действия</span>
                   </th>
                 </tr>
               </thead>
@@ -790,13 +790,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
                 <tr className="border-b border-[#2D3139] bg-[#0F1115]/60 text-gray-400 font-semibold uppercase tracking-wider">
                   <th
                     style={{ width: empWidths.id, minWidth: 50 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(empSort, setEmpSort, 'id')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>ID</span>
+                      <span className="truncate block" title="ID">ID</span>
                       {renderSortIcon('id', empSort.field, empSort.asc)}
                     </div>
                     <div
@@ -807,13 +807,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: empWidths.fullName, minWidth: 120 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(empSort, setEmpSort, 'fullName')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>Сотрудник (ФИО) *</span>
+                      <span className="truncate block" title="Сотрудник (ФИО)">Сотрудник (ФИО) *</span>
                       {renderSortIcon('fullName', empSort.field, empSort.asc)}
                     </div>
                     <div
@@ -824,13 +824,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: empWidths.position, minWidth: 100 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(empSort, setEmpSort, 'position')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>Должность</span>
+                      <span className="truncate block" title="Должность">Должность</span>
                       {renderSortIcon('position', empSort.field, empSort.asc)}
                     </div>
                     <div
@@ -841,13 +841,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: empWidths.dept, minWidth: 100 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(empSort, setEmpSort, 'departmentShortName')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>СП *</span>
+                      <span className="truncate block" title="СП">СП *</span>
                       {renderSortIcon('departmentShortName', empSort.field, empSort.asc)}
                     </div>
                     <div
@@ -858,13 +858,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: empWidths.org, minWidth: 100 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(empSort, setEmpSort, 'organizationName')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>Организация *</span>
+                      <span className="truncate block" title="Организация">Организация *</span>
                       {renderSortIcon('organizationName', empSort.field, empSort.asc)}
                     </div>
                     <div
@@ -875,9 +875,9 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: empWidths.actions, minWidth: 70 }}
-                    className="py-3 px-4 text-right"
+                    className="py-3 px-4 text-right overflow-hidden"
                   >
-                    Действия
+                    <span className="truncate block" title="Действия">Действия</span>
                   </th>
                 </tr>
               </thead>
@@ -975,13 +975,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
                 <tr className="border-b border-[#2D3139] bg-[#0F1115]/60 text-gray-400 font-semibold uppercase tracking-wider">
                   <th
                     style={{ width: docTypeWidths.id, minWidth: 50 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(docTypeSort, setDocTypeSort, 'id')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>ID</span>
+                      <span className="truncate block" title="ID">ID</span>
                       {renderSortIcon('id', docTypeSort.field, docTypeSort.asc)}
                     </div>
                     <div
@@ -992,13 +992,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: docTypeWidths.name, minWidth: 150 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(docTypeSort, setDocTypeSort, 'name')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>Тип документа *</span>
+                      <span className="truncate block" title="Тип документа">Тип документа *</span>
                       {renderSortIcon('name', docTypeSort.field, docTypeSort.asc)}
                     </div>
                     <div
@@ -1009,9 +1009,9 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: docTypeWidths.actions, minWidth: 70 }}
-                    className="py-3 px-4 text-right"
+                    className="py-3 px-4 text-right overflow-hidden"
                   >
-                    Действия
+                    <span className="truncate block" title="Действия">Действия</span>
                   </th>
                 </tr>
               </thead>
@@ -1091,13 +1091,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
                 <tr className="border-b border-[#2D3139] bg-[#0F1115]/60 text-gray-400 font-semibold uppercase tracking-wider">
                   <th
                     style={{ width: dirWidths.id, minWidth: 50 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(dirSort, setDirSort, 'id')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>ID</span>
+                      <span className="truncate block" title="ID">ID</span>
                       {renderSortIcon('id', dirSort.field, dirSort.asc)}
                     </div>
                     <div
@@ -1108,13 +1108,13 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: dirWidths.name, minWidth: 150 }}
-                    className="py-3 px-4 relative group"
+                    className="py-3 px-4 relative group overflow-hidden"
                   >
                     <div
                       onClick={() => handleSortToggle(dirSort, setDirSort, 'name')}
-                      className="flex items-center justify-between cursor-pointer"
+                      className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                     >
-                      <span>Направление *</span>
+                      <span className="truncate block" title="Направление">Направление *</span>
                       {renderSortIcon('name', dirSort.field, dirSort.asc)}
                     </div>
                     <div
@@ -1125,9 +1125,9 @@ export const DirectoriesView: React.FC<DirectoriesViewProps> = ({
 
                   <th
                     style={{ width: dirWidths.actions, minWidth: 70 }}
-                    className="py-3 px-4 text-right"
+                    className="py-3 px-4 text-right overflow-hidden"
                   >
-                    Действия
+                    <span className="truncate block" title="Действия">Действия</span>
                   </th>
                 </tr>
               </thead>

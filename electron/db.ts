@@ -70,10 +70,29 @@ class SQLiteDatabaseManager {
         return { success: false, message: `Сетевой путь недоступен: ${accessCheck.error}` };
       }
 
+      const effectiveTimeout = Math.max(Number(busyTimeout) || 5000, 5000);
+
+      // Если соединение уже открыто к этому же пути, не разрываем его,
+      // чтобы избежать состояния гонки/блокировок файла в сетевой ОС (Astra Linux / SMB)
+      if (this.currentDbPath === dbPath && this.db && this.db.open) {
+        try {
+          this.db.pragma(`busy_timeout = ${effectiveTimeout}`);
+        } catch {}
+        this.ensureSchema();
+        logger.log('info', 'db', `База данных уже открыта (${dbPath}), параметры таймаута обновлены (${effectiveTimeout}мс)`);
+        return { success: true, message: 'База данных успешно подключена и инициализирована' };
+      }
+
       if (this.db) {
         try {
-          this.db.close();
-        } catch {}
+          if (this.db.open) {
+            this.db.close();
+          }
+        } catch (closeErr: any) {
+          logger.log('warn', 'db', `Предупреждение при закрытии предыдущего соединения: ${closeErr.message}`);
+        } finally {
+          this.db = null;
+        }
       }
 
       if (!DatabaseConstructor) {
@@ -90,24 +109,48 @@ class SQLiteDatabaseManager {
       logger.log('info', 'db', `Подключение к SQLite: ${dbPath} (файл ${fileExists ? 'существует' : 'будет создан'})`);
 
       this.db = new DatabaseConstructor(dbPath, {
-        timeout: busyTimeout, // 5000 мс timeout для 6-10 сетевых пользователей
+        timeout: effectiveTimeout, // 5000+ мс timeout для 6-10 сетевых пользователей
         verbose: (msg: string) => {
           if (process.env.DEBUG_SQL) console.log(`[SQL]: ${msg}`);
         },
       });
 
-      // ВАЖНО ПО ТЗ: Отключаем WAL режим, так как БД на сетевом диске SMB/NFS!
-      this.db.pragma('journal_mode = DELETE');
-      this.db.pragma(`busy_timeout = ${busyTimeout}`);
-      this.db.pragma('foreign_keys = ON');
-      this.db.pragma('synchronous = FULL');
+      // 1. СНАЧАЛА устанавливаем busy_timeout, чтобы все последующие прагмы ждали освобождения файла!
+      try {
+        this.db.pragma(`busy_timeout = ${effectiveTimeout}`);
+      } catch {}
+
+      // 2. ВАЖНО ДЛЯ ASTRA LINUX И СЕТЕВЫХ РЕСУРСОВ SMB/NFS:
+      // journal_mode = DELETE требует эксклюзивной блокировки. Если база уже в DELETE или TRUNCATE,
+      // не вызываем повторный pragma journal_mode, чтобы не провоцировать ошибку "database is locked".
+      try {
+        const currentJournal = String(this.db.pragma('journal_mode', { simple: true })).toLowerCase();
+        if (currentJournal !== 'delete' && currentJournal !== 'truncate') {
+          this.db.pragma('journal_mode = DELETE');
+        }
+      } catch (journalErr: any) {
+        logger.log('warn', 'db', `Предупреждение journal_mode: ${journalErr.message}`);
+        try {
+          this.db.pragma('journal_mode = TRUNCATE');
+        } catch {}
+      }
+
+      // 3. foreign_keys
+      try {
+        this.db.pragma('foreign_keys = ON');
+      } catch {}
+
+      // 4. synchronous = NORMAL для сетевых файловых систем SMB/NFS исключает зависания сетевого I/O
+      try {
+        this.db.pragma('synchronous = NORMAL');
+      } catch {}
 
       this.currentDbPath = dbPath;
 
-      // Создаем таблицы, если БД новая
-      this.initSchema();
+      // Создаем/проверяем таблицы
+      this.ensureSchema();
 
-      logger.log('info', 'db', `Подключение к БД успешно установлено (busy_timeout=${busyTimeout}ms, journal_mode=DELETE)`);
+      logger.log('info', 'db', `Подключение к БД успешно установлено (busy_timeout=${effectiveTimeout}ms, journal_mode=DELETE, sync=NORMAL)`);
       return { success: true, message: 'База данных успешно подключена и инициализирована' };
     } catch (err: any) {
       logger.log('error', 'db', `Ошибка подключения к SQLite: ${err.message}`, err);
@@ -116,10 +159,26 @@ class SQLiteDatabaseManager {
   }
 
   /**
+   * Гарантированная проверка и инициализация схемы базы данных
+   */
+  public ensureSchema() {
+    if (!this.db || !this.db.open) return;
+    try {
+      const table = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='organizations'").get();
+      if (!table) {
+        this.initSchema();
+      }
+    } catch (e: any) {
+      logger.log('warn', 'db', `Проверка схемы organizations: ${e.message}, запуск initSchema`);
+      this.initSchema();
+    }
+  }
+
+  /**
    * Инициализация схемы базы данных
    */
   private initSchema() {
-    if (!this.db) return;
+    if (!this.db || !this.db.open) return;
 
     const schema = `
       -- Справочник: Организации
@@ -232,50 +291,74 @@ class SQLiteDatabaseManager {
     } catch {}
 
     // Первоначальное наполнение базовыми справочниками, если таблица doc_types пуста
-    const count = this.db.prepare('SELECT count(*) as c FROM doc_types').get().c;
-    if (count === 0) {
-      const insertOrg = this.db.prepare('INSERT INTO organizations (name, director, email) VALUES (?, ?, ?)');
-      insertOrg.run('АО «НПО РусБИТех» (Astra Linux)', 'Буравой С. М.', 'info@rusbitech.ru');
-      insertOrg.run('ПАО «Ростелеком»', 'Осеевский М. Э.', 'corp@rostelecom.ru');
-      insertOrg.run('Министерство цифрового развития РФ', 'Шадаев М. И.', 'press@digital.gov.ru');
+    try {
+      const countRow = this.db.prepare('SELECT count(*) as c FROM doc_types').get() as { c: number } | undefined;
+      const count = countRow ? countRow.c : 0;
+      if (count === 0) {
+        const insertOrg = this.db.prepare('INSERT INTO organizations (name, director, email) VALUES (?, ?, ?)');
+        insertOrg.run('АО «НПО РусБИТех» (Astra Linux)', 'Буравой С. М.', 'info@rusbitech.ru');
+        insertOrg.run('ПАО «Ростелеком»', 'Осеевский М. Э.', 'corp@rostelecom.ru');
+        insertOrg.run('Министерство цифрового развития РФ', 'Шадаев М. И.', 'press@digital.gov.ru');
 
-      const insertDept = this.db.prepare('INSERT INTO departments (name, short_name, organization_id) VALUES (?, ?, ?)');
-      insertDept.run('Управление делами и документооборота', 'УДО', 1);
-      insertDept.run('Отдел информационной безопасности', 'ОИБ', 1);
+        const insertDept = this.db.prepare('INSERT INTO departments (name, short_name, organization_id) VALUES (?, ?, ?)');
+        insertDept.run('Управление делами и документооборота', 'УДО', 1);
+        insertDept.run('Отдел информационной безопасности', 'ОИБ', 1);
 
-      const insertEmp = this.db.prepare('INSERT INTO employees (full_name, position, department_short_name, organization_id) VALUES (?, ?, ?, ?)');
-      insertEmp.run('Иванов Иван Иванович', 'Главный специалист', 'УДО', 1);
-      insertEmp.run('Смирнова Елена Александровна', 'Начальник отдела', 'ОИБ', 1);
+        const insertEmp = this.db.prepare('INSERT INTO employees (full_name, position, department_short_name, organization_id) VALUES (?, ?, ?, ?)');
+        insertEmp.run('Иванов Иван Иванович', 'Главный специалист', 'УДО', 1);
+        insertEmp.run('Смирнова Елена Александровна', 'Начальник отдела', 'ОИБ', 1);
 
-      const insertType = this.db.prepare('INSERT INTO doc_types (name) VALUES (?)');
-      ['Входящее письмо', 'Исходящий запрос', 'Приказ', 'Распоряжение', 'Договор', 'Акт приема-передачи'].forEach((t) => insertType.run(t));
+        const insertType = this.db.prepare('INSERT INTO doc_types (name) VALUES (?)');
+        ['Входящее письмо', 'Исходящий запрос', 'Приказ', 'Распоряжение', 'Договор', 'Акт приема-передачи'].forEach((t) => insertType.run(t));
 
-      const insertDir = this.db.prepare('INSERT INTO directions (name) VALUES (?)');
-      ['Входящие', 'Исходящие', 'Внутренние', 'Нормативно-распорядительные'].forEach((d) => insertDir.run(d));
+        const insertDir = this.db.prepare('INSERT INTO directions (name) VALUES (?)');
+        ['Входящие', 'Исходящие', 'Внутренние', 'Нормативно-распорядительные'].forEach((d) => insertDir.run(d));
+      }
+    } catch (seedErr: any) {
+      logger.log('warn', 'db', `Предупреждение первичного заполнения справочников: ${seedErr.message}`);
     }
   }
 
   // --- CRUD Организации ---
   public getOrganizations(): Organization[] {
     if (!this.db) return [];
+    this.ensureSchema();
     return this.db.prepare('SELECT id, name, director, email, created_at as createdAt, updated_at as updatedAt FROM organizations ORDER BY name ASC').all();
   }
 
   public saveOrganization(org: Omit<Organization, 'id'> & { id?: number }): Organization {
     if (!this.db) throw new Error('БД не подключена');
-    if (org.id) {
-      this.db.prepare('UPDATE organizations SET name = ?, director = ?, email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-        .run(org.name, org.director || '', org.email || '', org.id);
-      return this.db.prepare('SELECT id, name, director, email, created_at as createdAt, updated_at as updatedAt FROM organizations WHERE id = ?').get(org.id);
-    } else {
-      const info = this.db.prepare('INSERT INTO organizations (name, director, email) VALUES (?, ?, ?)')
-        .run(org.name, org.director || '', org.email || '');
-      return this.db.prepare('SELECT id, name, director, email, created_at as createdAt, updated_at as updatedAt FROM organizations WHERE id = ?').get(info.lastInsertRowid);
+    this.ensureSchema();
+    try {
+      if (org.id) {
+        this.db.prepare('UPDATE organizations SET name = ?, director = ?, email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+          .run(org.name, org.director || '', org.email || '', org.id);
+        return this.db.prepare('SELECT id, name, director, email, created_at as createdAt, updated_at as updatedAt FROM organizations WHERE id = ?').get(org.id);
+      } else {
+        const info = this.db.prepare('INSERT INTO organizations (name, director, email) VALUES (?, ?, ?)')
+          .run(org.name, org.director || '', org.email || '');
+        return this.db.prepare('SELECT id, name, director, email, created_at as createdAt, updated_at as updatedAt FROM organizations WHERE id = ?').get(info.lastInsertRowid);
+      }
+    } catch (err: any) {
+      if (String(err.message).includes('no such table')) {
+        this.initSchema();
+        if (org.id) {
+          this.db.prepare('UPDATE organizations SET name = ?, director = ?, email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+            .run(org.name, org.director || '', org.email || '', org.id);
+          return this.db.prepare('SELECT id, name, director, email, created_at as createdAt, updated_at as updatedAt FROM organizations WHERE id = ?').get(org.id);
+        } else {
+          const info = this.db.prepare('INSERT INTO organizations (name, director, email) VALUES (?, ?, ?)')
+            .run(org.name, org.director || '', org.email || '');
+          return this.db.prepare('SELECT id, name, director, email, created_at as createdAt, updated_at as updatedAt FROM organizations WHERE id = ?').get(info.lastInsertRowid);
+        }
+      }
+      throw err;
     }
   }
 
   public deleteOrganization(id: number): { success: boolean } {
     if (!this.db) throw new Error('БД не подключена');
+    this.ensureSchema();
     this.db.prepare('DELETE FROM organizations WHERE id = ?').run(id);
     return { success: true };
   }
@@ -283,6 +366,7 @@ class SQLiteDatabaseManager {
   // --- CRUD Структурные подразделения ---
   public getDepartments(): Department[] {
     if (!this.db) return [];
+    this.ensureSchema();
     return this.db.prepare(`
       SELECT d.id, d.name, d.short_name as shortName, d.organization_id as organizationId, 
              o.name as organizationName, d.created_at as createdAt, d.updated_at as updatedAt
@@ -294,6 +378,7 @@ class SQLiteDatabaseManager {
 
   public saveDepartment(dept: Omit<Department, 'id'> & { id?: number }): Department {
     if (!this.db) throw new Error('БД не подключена');
+    this.ensureSchema();
     if (dept.id) {
       this.db.prepare('UPDATE departments SET name = ?, short_name = ?, organization_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
         .run(dept.name, dept.shortName, dept.organizationId, dept.id);

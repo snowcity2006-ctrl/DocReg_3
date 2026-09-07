@@ -108,7 +108,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
     if (!resizingCol.current) return;
     const { colKey, startX, startWidth } = resizingCol.current;
     const delta = e.clientX - startX;
-    const newWidth = Math.max(50, startWidth + delta);
+    const newWidth = Math.max(60, startWidth + delta);
     setColWidths((prev) => {
       const updated = { ...prev, [colKey]: newWidth };
       try {
@@ -161,12 +161,12 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
 
   const renderSortIcon = (field: SortField) => {
     if (sortField !== field) {
-      return <ArrowUpDown className="w-3 h-3 text-gray-500 opacity-60 group-hover:opacity-100" />;
+      return <ArrowUpDown className="w-3 h-3 text-gray-500 opacity-60 group-hover:opacity-100 shrink-0 ml-1" />;
     }
     return sortAsc ? (
-      <ArrowUp className="w-3 h-3 text-blue-400" />
+      <ArrowUp className="w-3 h-3 text-blue-400 shrink-0 ml-1" />
     ) : (
-      <ArrowDown className="w-3 h-3 text-blue-400" />
+      <ArrowDown className="w-3 h-3 text-blue-400 shrink-0 ml-1" />
     );
   };
 
@@ -208,13 +208,13 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
               {/* ID */}
               <th
                 style={{ width: colWidths.id, minWidth: colWidths.id }}
-                className="py-3 px-3 relative group"
+                className="py-3 px-3 relative group overflow-hidden"
               >
                 <div
                   onClick={() => handleSort('id')}
-                  className="flex items-center justify-between cursor-pointer"
+                  className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                 >
-                  <span>ID</span>
+                  <span className="truncate block" title="ID">ID</span>
                   {renderSortIcon('id')}
                 </div>
                 <div
@@ -226,13 +226,13 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
               {/* Тип документа */}
               <th
                 style={{ width: colWidths.docType, minWidth: colWidths.docType }}
-                className="py-3 px-3 relative group"
+                className="py-3 px-3 relative group overflow-hidden"
               >
                 <div
                   onClick={() => handleSort('docTypeName')}
-                  className="flex items-center justify-between cursor-pointer"
+                  className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                 >
-                  <span>Тип</span>
+                  <span className="truncate block" title="Тип документа">Тип</span>
                   {renderSortIcon('docTypeName')}
                 </div>
                 <div
@@ -244,13 +244,13 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
               {/* Направление */}
               <th
                 style={{ width: colWidths.direction, minWidth: colWidths.direction }}
-                className="py-3 px-3 relative group"
+                className="py-3 px-3 relative group overflow-hidden"
               >
                 <div
                   onClick={() => handleSort('directionName')}
-                  className="flex items-center justify-between cursor-pointer"
+                  className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                 >
-                  <span>Направление</span>
+                  <span className="truncate block" title="Направление">Направление</span>
                   {renderSortIcon('directionName')}
                 </div>
                 <div
@@ -262,13 +262,13 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
               {/* Исх.№ */}
               <th
                 style={{ width: colWidths.outNum, minWidth: colWidths.outNum }}
-                className="py-3 px-3 relative group"
+                className="py-3 px-3 relative group overflow-hidden"
               >
                 <div
                   onClick={() => handleSort('outgoingNumber')}
-                  className="flex items-center justify-between cursor-pointer"
+                  className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                 >
-                  <span>Исх.№</span>
+                  <span className="truncate block" title="Исходящий номер">Исх.№</span>
                   {renderSortIcon('outgoingNumber')}
                 </div>
                 <div
@@ -280,13 +280,13 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
               {/* Исх.дата */}
               <th
                 style={{ width: colWidths.outDate, minWidth: colWidths.outDate }}
-                className="py-3 px-3 relative group"
+                className="py-3 px-3 relative group overflow-hidden"
               >
                 <div
                   onClick={() => handleSort('outgoingDate')}
-                  className="flex items-center justify-between cursor-pointer"
+                  className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                 >
-                  <span>Исх.дата</span>
+                  <span className="truncate block" title="Исходящая дата">Исх.дата</span>
                   {renderSortIcon('outgoingDate')}
                 </div>
                 <div
@@ -298,13 +298,13 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
               {/* Вх.№ */}
               <th
                 style={{ width: colWidths.inNum, minWidth: colWidths.inNum }}
-                className="py-3 px-3 relative group"
+                className="py-3 px-3 relative group overflow-hidden"
               >
                 <div
                   onClick={() => handleSort('incomingNumber')}
-                  className="flex items-center justify-between cursor-pointer"
+                  className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                 >
-                  <span>Вх.№</span>
+                  <span className="truncate block" title="Входящий номер">Вх.№</span>
                   {renderSortIcon('incomingNumber')}
                 </div>
                 <div
@@ -316,13 +316,13 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
               {/* Вх.дата */}
               <th
                 style={{ width: colWidths.inDate, minWidth: colWidths.inDate }}
-                className="py-3 px-3 relative group"
+                className="py-3 px-3 relative group overflow-hidden"
               >
                 <div
                   onClick={() => handleSort('incomingDate')}
-                  className="flex items-center justify-between cursor-pointer"
+                  className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                 >
-                  <span>Вх.дата</span>
+                  <span className="truncate block" title="Входящая дата">Вх.дата</span>
                   {renderSortIcon('incomingDate')}
                 </div>
                 <div
@@ -334,13 +334,13 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
               {/* Тема */}
               <th
                 style={{ width: colWidths.subject, minWidth: colWidths.subject }}
-                className="py-3 px-3 relative group"
+                className="py-3 px-3 relative group overflow-hidden"
               >
                 <div
                   onClick={() => handleSort('subject')}
-                  className="flex items-center justify-between cursor-pointer"
+                  className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                 >
-                  <span>Тема *</span>
+                  <span className="truncate block" title="Тема документа">Тема *</span>
                   {renderSortIcon('subject')}
                 </div>
                 <div
@@ -352,13 +352,13 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
               {/* Отправитель */}
               <th
                 style={{ width: colWidths.sender, minWidth: colWidths.sender }}
-                className="py-3 px-3 relative group"
+                className="py-3 px-3 relative group overflow-hidden"
               >
                 <div
                   onClick={() => handleSort('senderName')}
-                  className="flex items-center justify-between cursor-pointer"
+                  className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                 >
-                  <span>Отправитель</span>
+                  <span className="truncate block" title="Отправитель">Отправитель</span>
                   {renderSortIcon('senderName')}
                 </div>
                 <div
@@ -370,13 +370,13 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
               {/* Получатель */}
               <th
                 style={{ width: colWidths.recipient, minWidth: colWidths.recipient }}
-                className="py-3 px-3 relative group"
+                className="py-3 px-3 relative group overflow-hidden"
               >
                 <div
                   onClick={() => handleSort('recipientName')}
-                  className="flex items-center justify-between cursor-pointer"
+                  className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                 >
-                  <span>Получатель</span>
+                  <span className="truncate block" title="Получатель">Получатель</span>
                   {renderSortIcon('recipientName')}
                 </div>
                 <div
@@ -388,10 +388,10 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
               {/* Путь к документу */}
               <th
                 style={{ width: colWidths.filePath, minWidth: colWidths.filePath }}
-                className="py-3 px-3 relative group"
+                className="py-3 px-3 relative group overflow-hidden"
               >
-                <div className="flex items-center justify-between">
-                  <span>Файл / Папка</span>
+                <div className="flex items-center justify-between min-w-0 pr-1.5">
+                  <span className="truncate block" title="Файл / Папка">Файл / Папка</span>
                 </div>
                 <div
                   onMouseDown={(e) => startResizing('filePath', e)}
@@ -402,10 +402,10 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
               {/* Путь к документу в СЭД */}
               <th
                 style={{ width: colWidths.sedUrl, minWidth: colWidths.sedUrl }}
-                className="py-3 px-3 relative group"
+                className="py-3 px-3 relative group overflow-hidden"
               >
-                <div className="flex items-center justify-between">
-                  <span>СЭД ссылка</span>
+                <div className="flex items-center justify-between min-w-0 pr-1.5">
+                  <span className="truncate block" title="Ссылка СЭД">СЭД ссылка</span>
                 </div>
                 <div
                   onMouseDown={(e) => startResizing('sedUrl', e)}
@@ -416,9 +416,9 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
               {/* Действия */}
               <th
                 style={{ width: colWidths.actions, minWidth: colWidths.actions }}
-                className="py-3 px-3 text-right sticky right-0 bg-[#1F222B]"
+                className="py-3 px-3 text-right sticky right-0 bg-[#1F222B] overflow-hidden"
               >
-                <span>Действия</span>
+                <span className="truncate block" title="Действия">Действия</span>
               </th>
 
             </tr>

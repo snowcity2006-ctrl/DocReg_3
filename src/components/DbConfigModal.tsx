@@ -14,7 +14,6 @@ import {
   FileText,
   Network,
   Archive,
-  CornerDownRight,
 } from 'lucide-react';
 import { DatabaseConfig } from '../types';
 import { electronBridge } from '../services/electronBridge';
@@ -138,21 +137,6 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
     } else {
       setBackupFolder('/mnt/smb_share/docflow/backup');
     }
-  };
-
-  // Быстрый выбор стандартного сетевого пути
-  const handleQuickNetworkPath = (networkDir: string) => {
-    let filename = 'company_docs.sqlite';
-    if (dbPath.trim()) {
-      const cleanPath = dbPath.trim().replace(/\\/g, '/');
-      const lastSegment = cleanPath.split('/').pop();
-      if (lastSegment && (lastSegment.endsWith('.sqlite') || lastSegment.endsWith('.db') || lastSegment.endsWith('.sqlite3'))) {
-        filename = lastSegment;
-      }
-    }
-    const withSlash = networkDir.endsWith('/') || networkDir.endsWith('\\') ? networkDir : `${networkDir}/`;
-    setDbPath(`${withSlash}${filename}`);
-    setTestResult(null);
   };
 
   const isNetworkPath = (pathStr: string) => {
@@ -317,38 +301,6 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
               >
                 <FileText className="w-4 h-4 text-gray-400" />
                 <span>Файл</span>
-              </button>
-            </div>
-
-            {/* Быстрые сетевые точки монтирования */}
-            <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-gray-400">
-              <span className="flex items-center gap-1 text-gray-500">
-                <CornerDownRight className="w-3 h-3" />
-                Сетевые диски:
-              </span>
-              <button
-                type="button"
-                onClick={() => handleQuickNetworkPath('/mnt/smb_share/docflow/')}
-                className="px-2 py-0.5 bg-[#0F1115] hover:bg-[#1F222B] text-blue-300/90 rounded border border-[#2D3139] font-mono cursor-pointer transition-colors"
-                title="Использовать точку монтирования SMB"
-              >
-                /mnt/smb_share/docflow/
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickNetworkPath('/mnt/network_share/docflow/')}
-                className="px-2 py-0.5 bg-[#0F1115] hover:bg-[#1F222B] text-blue-300/90 rounded border border-[#2D3139] font-mono cursor-pointer transition-colors"
-                title="Использовать точку монтирования NFS"
-              >
-                /mnt/network_share/docflow/
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickNetworkPath('\\\\server\\docflow\\')}
-                className="px-2 py-0.5 bg-[#0F1115] hover:bg-[#1F222B] text-blue-300/90 rounded border border-[#2D3139] font-mono cursor-pointer transition-colors"
-                title="Использовать UNC-путь Windows"
-              >
-                \\server\docflow\
               </button>
             </div>
 

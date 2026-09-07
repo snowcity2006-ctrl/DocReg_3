@@ -174,7 +174,8 @@ function setupIpcHandlers() {
   });
 
   ipcMain.handle('db:setPath', async (_event, newPath: string) => {
-    const res = await dbManager.connect(newPath);
+    const currentCfg = store.getDbConfig();
+    const res = await dbManager.connect(newPath, currentCfg.busyTimeout || 5000);
     if (res.success) {
       const isNet = newPath.startsWith('//') || newPath.startsWith('\\\\') || newPath.includes('/mnt/') || newPath.includes('smb') || newPath.includes('nfs');
       const updated = store.setDbConfig({
@@ -190,8 +191,10 @@ function setupIpcHandlers() {
 
   ipcMain.handle('db:saveConfig', async (_event, newConfig: Partial<DatabaseConfig>) => {
     let isNet: boolean | undefined = undefined;
+    const currentCfg = store.getDbConfig();
+    const effectiveTimeout = newConfig.busyTimeout || currentCfg.busyTimeout || 5000;
     if (newConfig.dbPath) {
-      const res = await dbManager.connect(newConfig.dbPath);
+      const res = await dbManager.connect(newConfig.dbPath, effectiveTimeout);
       if (!res.success) {
         return { success: false, message: res.message };
       }
