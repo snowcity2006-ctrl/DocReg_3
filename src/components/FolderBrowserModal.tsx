@@ -278,7 +278,7 @@ export const FolderBrowserModal: React.FC<FolderBrowserModalProps> = ({
               <FolderOpen className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white leading-tight">
+              <h3 className="text-base font-bold text-[#E0E0E0] leading-tight">
                 {title}
               </h3>
               <p className="text-xs text-gray-400 mt-0.5">
@@ -363,7 +363,7 @@ export const FolderBrowserModal: React.FC<FolderBrowserModalProps> = ({
                 value={currentPath}
                 onChange={(e) => setCurrentPath(e.target.value)}
                 placeholder="/mnt/smb_share/docflow/ или \\server\share\docflow\"
-                className="w-full px-3 py-2 bg-[#171A21] border border-[#2D3139] rounded-lg text-xs font-mono text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                className="w-full px-3 py-2 bg-[#171A21] border border-[#2D3139] rounded-lg text-xs font-mono text-[#E0E0E0] placeholder-gray-500 focus:outline-none focus:border-blue-500"
               />
               
               {/* Кнопка системного проводника если в Electron */}
@@ -489,7 +489,7 @@ export const FolderBrowserModal: React.FC<FolderBrowserModalProps> = ({
                       if (e.key === 'Escape') setIsCreatingFolder(false);
                     }}
                     placeholder="Название новой папки (например: backup_2026)..."
-                    className="flex-1 px-3 py-1.5 bg-[#171A21] border border-[#2D3139] rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                    className="flex-1 px-3 py-1.5 bg-[#171A21] border border-[#2D3139] rounded-lg text-xs text-[#E0E0E0] placeholder-gray-500 focus:outline-none focus:border-blue-500"
                   />
                   <button
                     type="button"
@@ -540,7 +540,7 @@ export const FolderBrowserModal: React.FC<FolderBrowserModalProps> = ({
           {/* Вкладка 3: Ручной ввод и справка */}
           {activeTab === 'manual' && (
             <div className="space-y-3 text-xs text-gray-300">
-              <p className="font-semibold text-white">
+              <p className="font-semibold text-[#E0E0E0]">
                 Поддерживаемые форматы путей к сетевым и локальным дискам:
               </p>
               

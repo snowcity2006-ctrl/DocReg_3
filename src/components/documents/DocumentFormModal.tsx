@@ -530,7 +530,7 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
               <FileText className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-base font-bold text-white truncate">
+              <h3 className="text-base font-bold text-[#E0E0E0] truncate">
                 {initialData ? `Редактирование карточки документа №${initialData.id}` : 'Регистрация нового документа'}
               </h3>
               <p className="text-xs text-gray-400 truncate">
@@ -1006,7 +1006,7 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
                             onClick={() => toggleRecipient(org.id)}
                             className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer transition-colors ${
                               isSelected
-                                ? 'bg-blue-600/15 text-white font-medium'
+                                ? 'bg-blue-600/15 text-[#E0E0E0] font-medium'
                                 : 'hover:bg-[#2D3139]/40 text-gray-300'
                             }`}
                           >
@@ -1167,7 +1167,7 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
                             onClick={() => toggleDepartment(dept.id)}
                             className={`flex items-center justify-between gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer transition-colors ${
                               isSelected
-                                ? 'bg-indigo-600/20 text-white font-medium'
+                                ? 'bg-indigo-600/20 text-[#E0E0E0] font-medium'
                                 : 'hover:bg-[#2D3139]/40 text-gray-300'
                             }`}
                           >

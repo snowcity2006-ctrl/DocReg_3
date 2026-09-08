@@ -473,7 +473,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 <td className="py-2.5 px-3">
                   <span
                     onClick={() => onView(doc)}
-                    className="font-semibold text-white hover:text-blue-400 cursor-pointer break-words whitespace-normal leading-relaxed transition-colors block"
+                    className="font-semibold text-[#E0E0E0] hover:text-blue-500 dark:hover:text-blue-400 cursor-pointer break-words whitespace-normal leading-relaxed transition-colors block"
                     title={doc.subject}
                   >
                     {doc.subject}
@@ -663,7 +663,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
           </button>
 
           <span className="px-2 font-medium">
-            Стр. <strong className="text-white font-mono">{currentPage}</strong> из <span className="font-mono text-gray-400">{totalPages}</span>
+            Стр. <strong className="text-[#E0E0E0] font-mono">{currentPage}</strong> из <span className="font-mono text-gray-400">{totalPages}</span>
           </span>
 
           <button
@@ -692,7 +692,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="text-sm font-bold text-white">
+                <h4 className="text-sm font-bold text-[#E0E0E0]">
                   Удаление документа №{deleteDialog.docId}
                 </h4>
                 <p className="text-xs text-gray-400">
@@ -703,7 +703,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
 
             <p className="text-xs text-gray-300 leading-relaxed">
               Вы уверены, что хотите безвозвратно удалить документ: <br />
-              <strong className="text-white">«{deleteDialog.docSubject}»</strong>?
+              <strong className="text-[#E0E0E0]">«{deleteDialog.docSubject}»</strong>?
             </p>
 
             <div className="pt-2 flex items-center justify-end gap-2">

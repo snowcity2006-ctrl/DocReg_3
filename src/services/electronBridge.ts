@@ -887,6 +887,15 @@ class WebMockDatabase implements ElectronAPI {
   async selectDatabaseFile(): Promise<string | null> {
     if (typeof document === 'undefined') return '/mnt/smb_share/docflow/company_docs.sqlite';
     return new Promise((resolve) => {
+      let isResolved = false;
+      const done = (val: string | null) => {
+        if (!isResolved) {
+          isResolved = true;
+          if (document.body.contains(input)) document.body.removeChild(input);
+          resolve(val);
+        }
+      };
+
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = '.sqlite,.db,.sqlite3,*';
@@ -899,35 +908,29 @@ class WebMockDatabase implements ElectronAPI {
           const file = target.files[0];
           const fullPath = (file as any).path;
           if (fullPath) {
-            if (document.body.contains(input)) document.body.removeChild(input);
-            resolve(fullPath.replace(/\\/g, '/'));
+            done(fullPath.replace(/\\/g, '/'));
             return;
           }
 
           const fileName = file.name;
           const finalPath = `/mnt/smb_share/docflow/${fileName}`;
-          if (document.body.contains(input)) document.body.removeChild(input);
-          resolve(finalPath);
+          done(finalPath);
         } else {
-          if (document.body.contains(input)) document.body.removeChild(input);
-          resolve(null);
+          done(null);
         }
       };
 
-      input.oncancel = () => {
-        if (document.body.contains(input)) document.body.removeChild(input);
-        resolve(null);
-      };
+      input.oncancel = () => done(null);
+      input.addEventListener('cancel', () => done(null));
 
       window.addEventListener(
         'focus',
         () => {
           setTimeout(() => {
-            if (document.body.contains(input)) {
-              document.body.removeChild(input);
-              resolve(null);
+            if (!isResolved) {
+              done(null);
             }
-          }, 1500);
+          }, 2000);
         },
         { once: true }
       );
@@ -939,6 +942,15 @@ class WebMockDatabase implements ElectronAPI {
   async selectDatabaseFolder(): Promise<string | null> {
     if (typeof document === 'undefined') return '/mnt/smb_share/docflow/';
     return new Promise((resolve) => {
+      let isResolved = false;
+      const done = (val: string | null) => {
+        if (!isResolved) {
+          isResolved = true;
+          if (document.body.contains(input)) document.body.removeChild(input);
+          resolve(val);
+        }
+      };
+
       const input = document.createElement('input');
       input.type = 'file';
       input.setAttribute('webkitdirectory', '');
@@ -956,36 +968,30 @@ class WebMockDatabase implements ElectronAPI {
             const parts = normalized.split('/');
             parts.pop();
             const folderPath = parts.join('/') + '/';
-            if (document.body.contains(input)) document.body.removeChild(input);
-            resolve(folderPath);
+            done(folderPath);
             return;
           }
 
           const relPath = file.webkitRelativePath || '';
           const folderName = relPath.split('/')[0] || 'docflow';
           const folderPath = `/mnt/smb_share/${folderName}/`;
-          if (document.body.contains(input)) document.body.removeChild(input);
-          resolve(folderPath);
+          done(folderPath);
         } else {
-          if (document.body.contains(input)) document.body.removeChild(input);
-          resolve(null);
+          done(null);
         }
       };
 
-      input.oncancel = () => {
-        if (document.body.contains(input)) document.body.removeChild(input);
-        resolve(null);
-      };
+      input.oncancel = () => done(null);
+      input.addEventListener('cancel', () => done(null));
 
       window.addEventListener(
         'focus',
         () => {
           setTimeout(() => {
-            if (document.body.contains(input)) {
-              document.body.removeChild(input);
-              resolve(null);
+            if (!isResolved) {
+              done(null);
             }
-          }, 1500);
+          }, 2000);
         },
         { once: true }
       );
@@ -997,6 +1003,15 @@ class WebMockDatabase implements ElectronAPI {
   async selectBackupFolder(): Promise<string | null> {
     if (typeof document === 'undefined') return '/mnt/smb_share/docflow/backup';
     return new Promise((resolve) => {
+      let isResolved = false;
+      const done = (val: string | null) => {
+        if (!isResolved) {
+          isResolved = true;
+          if (document.body.contains(input)) document.body.removeChild(input);
+          resolve(val);
+        }
+      };
+
       const input = document.createElement('input');
       input.type = 'file';
       input.setAttribute('webkitdirectory', '');
@@ -1014,36 +1029,30 @@ class WebMockDatabase implements ElectronAPI {
             const parts = normalized.split('/');
             parts.pop();
             const folderPath = parts.join('/') + '/backup';
-            if (document.body.contains(input)) document.body.removeChild(input);
-            resolve(folderPath);
+            done(folderPath);
             return;
           }
 
           const relPath = file.webkitRelativePath || '';
           const folderName = relPath.split('/')[0] || 'docflow';
           const folderPath = `/mnt/smb_share/${folderName}/backup`;
-          if (document.body.contains(input)) document.body.removeChild(input);
-          resolve(folderPath);
+          done(folderPath);
         } else {
-          if (document.body.contains(input)) document.body.removeChild(input);
-          resolve(null);
+          done(null);
         }
       };
 
-      input.oncancel = () => {
-        if (document.body.contains(input)) document.body.removeChild(input);
-        resolve(null);
-      };
+      input.oncancel = () => done(null);
+      input.addEventListener('cancel', () => done(null));
 
       window.addEventListener(
         'focus',
         () => {
           setTimeout(() => {
-            if (document.body.contains(input)) {
-              document.body.removeChild(input);
-              resolve(null);
+            if (!isResolved) {
+              done(null);
             }
-          }, 1500);
+          }, 2000);
         },
         { once: true }
       );

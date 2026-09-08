@@ -60,7 +60,7 @@ export const DocumentCardModal: React.FC<DocumentCardModalProps> = ({
               <FileText className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-[#E0E0E0] flex items-center gap-2">
                 <span>Карточка документа №{doc.id}</span>
                 <span className="text-[11px] font-normal px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono">
                   {doc.docTypeName}
@@ -107,7 +107,7 @@ export const DocumentCardModal: React.FC<DocumentCardModalProps> = ({
             <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1">
               Тема / Краткое содержание
             </span>
-            <p className="text-sm font-semibold text-white leading-relaxed">
+            <p className="text-sm font-semibold text-[#E0E0E0] leading-relaxed">
               {doc.subject}
             </p>
           </div>
@@ -219,7 +219,7 @@ export const DocumentCardModal: React.FC<DocumentCardModalProps> = ({
               {doc.recipientDepartmentNames && (
                 <div className="mt-2 pt-2 border-t border-[#2D3139]/60">
                   <span className="text-gray-400 text-[10px] block mb-0.5">Структурные подразделения:</span>
-                  <span className="text-indigo-300 font-medium text-xs">
+                  <span className="text-indigo-600 dark:text-indigo-300 font-medium text-xs">
                     {doc.recipientDepartmentNames}
                   </span>
                 </div>
