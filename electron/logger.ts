@@ -3,7 +3,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { app } from 'electron';
+import * as electron from 'electron';
 import { LogEntry, LogLevel } from '../src/types';
 
 class MainLogger {
@@ -12,7 +12,11 @@ class MainLogger {
   private maxLogs = 300;
 
   constructor() {
-    const userDataPath = app?.getPath ? app.getPath('userData') : process.cwd();
+    let electronApp: any = (electron as any)?.app;
+    if (!electronApp && (electron as any)?.default?.app) {
+      electronApp = (electron as any).default.app;
+    }
+    const userDataPath = electronApp?.getPath ? electronApp.getPath('userData') : process.cwd();
     const logsDir = path.join(userDataPath, 'logs');
     if (!fs.existsSync(logsDir)) {
       try {

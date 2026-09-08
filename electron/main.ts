@@ -162,14 +162,14 @@ function setupIpcHandlers() {
   ipcMain.handle('db:getStatus', async () => {
     const cfg = store.getDbConfig();
     const access = await dbManager.checkPathAccessibility(cfg.dbPath);
-    const docs = dbManager.getDocuments();
+    const count = dbManager.getDocumentsCount();
     return {
       connected: access.accessible,
       path: cfg.dbPath,
       isNetwork: cfg.isNetworkPath,
       isAccessible: access.accessible,
       lastSync: cfg.lastConnected || new Date().toISOString(),
-      recordsCount: Array.isArray(docs) ? docs.length : 0,
+      recordsCount: count,
     };
   });
 
@@ -255,7 +255,7 @@ function setupIpcHandlers() {
 
   // --- Документы ---
   ipcMain.handle('doc:getAll', async () => dbManager.getDocuments());
-  ipcMain.handle('doc:getById', async (_e, id) => dbManager.getDocuments().find((d) => d.id === id) || null);
+  ipcMain.handle('doc:getById', async (_e, id) => dbManager.getDocumentById(id));
   ipcMain.handle('doc:save', async (_e, doc) => dbManager.saveDocument(doc));
   ipcMain.handle('doc:delete', async (_e, id) => dbManager.deleteDocument(id));
 

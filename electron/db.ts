@@ -25,12 +25,21 @@ import {
 } from '../src/types';
 import { logger } from './logger';
 import { store } from './store';
+declare const __non_webpack_require__: any;
+const getRequire = () => {
+  if (typeof __non_webpack_require__ !== 'undefined') return __non_webpack_require__;
+  if (typeof require !== 'undefined') return require;
+  return null;
+};
 
 // Динамический импорт better-sqlite3 для безопасного запуска в разных средах
 let DatabaseConstructor: any = null;
 
 try {
-  DatabaseConstructor = require('better-sqlite3');
+  const req = getRequire();
+  if (req) {
+    DatabaseConstructor = req('better-sqlite3');
+  }
 } catch (e) {
   // При сборке или в dev-окружении
 }
@@ -38,6 +47,7 @@ try {
 class SQLiteDatabaseManager {
   private db: any = null;
   private currentDbPath: string = '';
+  private writeQueue: Promise<any> = Promise.resolve();
 
   /**
    * Проверяет доступность сетевого пути / файла
@@ -65,10 +75,10 @@ class SQLiteDatabaseManager {
   }
 
   /**
-   * Выполняет синхронную операцию SQLite с механизмом повторных попыток
-   * при обнаружении временных блокировок (SQLITE_BUSY / database is locked)
+   * Выполняет асинхронную операцию SQLite с механизмом повторных попыток
+   * при обнаружении временных сетевых блокировок (SQLITE_BUSY / database is locked)
    */
-  private runWithRetry<T>(operation: () => T, maxRetries = 5, baseDelayMs = 60): T {
+  private async runWithRetry<T>(operation: () => T, maxRetries = 10, baseDelayMs = 120): Promise<T> {
     let lastError: any = null;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
@@ -76,19 +86,75 @@ class SQLiteDatabaseManager {
       } catch (err: any) {
         lastError = err;
         const msg = String(err?.message || '');
-        const isLocked = msg.includes('database is locked') || msg.includes('SQLITE_BUSY') || msg.includes('busy');
+        const isLocked =
+          msg.includes('database is locked') ||
+          msg.includes('SQLITE_BUSY') ||
+          msg.includes('busy') ||
+          msg.includes('cannot start a transaction');
+
         if (!isLocked || attempt === maxRetries - 1) {
           throw err;
         }
-        // Задержка с небольшим случайным джиттером для предотвращения повторной коллизии
-        const delay = Math.round(baseDelayMs * Math.pow(1.5, attempt) + Math.random() * 30);
-        const start = Date.now();
-        while (Date.now() - start < delay) {
-          // busy wait для синхронного вызова better-sqlite3
+
+        // Если в соединении осталась незавершенная транзакция, откатываем ее
+        if (this.db && this.db.open && this.db.inTransaction) {
+          try {
+            this.db.exec('ROLLBACK;');
+          } catch {}
         }
+
+        // Экспоненциальный бэкофф со случайным джиттером
+        const delay = Math.round(baseDelayMs * Math.pow(1.35, attempt) + Math.random() * 80);
+        logger.log(
+          'warn',
+          'db',
+          `БД временно занята блокировкой на сетевом диске CIFS/SMB (попытка ${attempt + 1}/${maxRetries}), повтор через ${delay}мс...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
     throw lastError;
+  }
+
+  /**
+   * Безопасное выполнение операций записи в режиме транзакции BEGIN IMMEDIATE
+   * с локальной сериализацией очереди и гарантированным авто-откатом при ошибках.
+   * 
+   * Использование BEGIN IMMEDIATE критично для CIFS/SMB в Astra Linux:
+   * Оно немедленно запрашивает RESERVED-блокировку до чтения/записи данных,
+   * заставляя SQLite уважать busy_timeout и устраняя ошибку deadlock при lock upgrade.
+   */
+  private runWriteTransaction<T>(operation: () => T): Promise<T> {
+    const task = async (): Promise<T> => {
+      return this.runWithRetry(() => {
+        if (!this.db || !this.db.open) throw new Error('БД не подключена');
+
+        // Страховка от предшествующих незакрытых транзакций
+        if (this.db.inTransaction) {
+          try {
+            this.db.exec('ROLLBACK;');
+          } catch {}
+        }
+
+        this.db.exec('BEGIN IMMEDIATE;');
+        try {
+          const result = operation();
+          this.db.exec('COMMIT;');
+          return result;
+        } catch (opErr) {
+          if (this.db && this.db.open && this.db.inTransaction) {
+            try {
+              this.db.exec('ROLLBACK;');
+            } catch {}
+          }
+          throw opErr;
+        }
+      });
+    };
+
+    const result = this.writeQueue.then(task, task);
+    this.writeQueue = result.catch(() => {});
+    return result;
   }
 
   /**
@@ -110,7 +176,7 @@ class SQLiteDatabaseManager {
   /**
    * Инициализирует подключение к файлу .sqlite с защитой от ошибок блокировки на CIFS/SMB
    */
-  public async connect(dbPath: string, busyTimeout = 5000): Promise<{ success: boolean; message: string }> {
+  public async connect(dbPath: string, busyTimeout = 10000): Promise<{ success: boolean; message: string }> {
     try {
       const accessCheck = await this.checkPathAccessibility(dbPath);
       if (!accessCheck.accessible) {
@@ -118,14 +184,14 @@ class SQLiteDatabaseManager {
         return { success: false, message: `Сетевой путь недоступен: ${accessCheck.error}` };
       }
 
-      const effectiveTimeout = Math.max(Number(busyTimeout) || 5000, 5000);
+      const effectiveTimeout = Math.max(Number(busyTimeout) || 10000, 10000);
 
       // Если соединение уже открыто к этому же пути, не переоткрываем его заново
       if (this.currentDbPath === dbPath && this.db && this.db.open) {
         try {
           this.db.pragma(`busy_timeout = ${effectiveTimeout}`);
         } catch {}
-        this.ensureSchema();
+        await this.ensureSchema();
         logger.log('info', 'db', `База данных уже открыта (${dbPath}), параметры таймаута обновлены (${effectiveTimeout}мс)`);
         return { success: true, message: 'База данных успешно подключена и инициализирована' };
       }
@@ -147,7 +213,10 @@ class SQLiteDatabaseManager {
 
       if (!DatabaseConstructor) {
         try {
-          DatabaseConstructor = require('better-sqlite3');
+          const r = getRequire();
+          if (r) {
+            DatabaseConstructor = r('better-sqlite3');
+          }
         } catch (e) {
           logger.log('warn', 'db', 'better-sqlite3 не загружен в dev-режиме, используется mock-режим');
           this.currentDbPath = dbPath;
@@ -185,9 +254,10 @@ class SQLiteDatabaseManager {
         try {
           const tempDb = new DatabaseConstructor(tempFile, { timeout: 10000 });
           try {
-            tempDb.pragma('journal_mode = DELETE');
+            tempDb.pragma('journal_mode = TRUNCATE');
             tempDb.pragma('synchronous = NORMAL');
             tempDb.pragma('foreign_keys = ON');
+            tempDb.pragma('temp_store = MEMORY');
           } catch {}
 
           // Заполняем схему и базовые справочники локально без сетевых задержек
@@ -223,7 +293,7 @@ class SQLiteDatabaseManager {
         },
       });
 
-      // 1. Устанавливаем busy_timeout для 6-10 одновременных сетевых пользователей
+      // 1. Устанавливаем busy_timeout для 6-10 одновременных сетевых пользователей (10000+ мс)
       try {
         this.db.pragma(`busy_timeout = ${effectiveTimeout}`);
       } catch {}
@@ -238,11 +308,26 @@ class SQLiteDatabaseManager {
         this.db.pragma('foreign_keys = ON');
       } catch {}
 
-      // 4. Проверяем режим журнала (не вызываем PRAGMA journal_mode = DELETE, если он уже DELETE)
+      // 4. temp_store = MEMORY (хранить временные структуры в RAM, а не на сетевом диске)
+      try {
+        this.db.pragma('temp_store = MEMORY');
+      } catch {}
+
+      // 5. cache_size = -64000 (64MB памяти под кэш страниц SQLite)
+      try {
+        this.db.pragma('cache_size = -64000');
+      } catch {}
+
+      // 6. locking_mode = NORMAL (своевременное снятие блокировок после коммита транзакций)
+      try {
+        this.db.pragma('locking_mode = NORMAL');
+      } catch {}
+
+      // 7. journal_mode = TRUNCATE (для сетевых файловых систем CIFS/SMB предотвращает постоянное создание/удаление файла .sqlite-journal, исключая коллизии POSIX-блокировок)
       try {
         const currentJournal = String(this.db.pragma('journal_mode', { simple: true })).toLowerCase();
-        if (currentJournal !== 'delete' && currentJournal !== 'truncate') {
-          this.db.pragma('journal_mode = DELETE');
+        if (currentJournal !== 'truncate' && currentJournal !== 'delete') {
+          this.db.pragma('journal_mode = TRUNCATE');
         }
       } catch (journalErr: any) {
         logger.log('warn', 'db', `Предупреждение journal_mode: ${journalErr.message}`);
@@ -251,9 +336,9 @@ class SQLiteDatabaseManager {
       this.currentDbPath = dbPath;
 
       // Проверяем схему и наличие колонок (без конфликтов блокировок)
-      this.ensureSchema();
+      await this.ensureSchema();
 
-      logger.log('info', 'db', `Подключение к БД успешно установлено (busy_timeout=${effectiveTimeout}ms, journal_mode=DELETE, sync=NORMAL)`);
+      logger.log('info', 'db', `Подключение к БД успешно установлено (busy_timeout=${effectiveTimeout}ms, journal_mode=TRUNCATE, sync=NORMAL)`);
       return { success: true, message: 'База данных успешно подключена и инициализирована' };
     } catch (err: any) {
       logger.log('error', 'db', `Ошибка подключения к SQLite: ${err.message}`, err);
@@ -264,14 +349,14 @@ class SQLiteDatabaseManager {
   /**
    * Гарантированная проверка схемы базы данных при подключении
    */
-  public ensureSchema() {
+  public async ensureSchema() {
     if (!this.db || !this.db.open) return;
     try {
       const table = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='organizations'").get();
       if (!table) {
         this.populateFullSchemaAndDefaults(this.db);
       } else {
-        this.ensureColumnsExist();
+        await this.ensureColumnsExist();
       }
     } catch (e: any) {
       logger.log('warn', 'db', `Проверка схемы organizations: ${e.message}`);
@@ -286,7 +371,7 @@ class SQLiteDatabaseManager {
   /**
    * Безопасная проверка и добавление отсутствующих колонок в таблицу documents
    */
-  private ensureColumnsExist() {
+  private async ensureColumnsExist() {
     if (!this.db || !this.db.open) return;
     try {
       const pragmaCols = this.db.prepare("PRAGMA table_info('documents')").all() as Array<{ name: string }>;
@@ -307,7 +392,7 @@ class SQLiteDatabaseManager {
       for (const col of colsToAdd) {
         if (!existingColNames.has(col.name)) {
           try {
-            this.runWithRetry(() => {
+            await this.runWithRetry(() => {
               this.db.exec(`ALTER TABLE documents ADD COLUMN ${col.name} ${col.type};`);
             });
           } catch {}
@@ -449,24 +534,22 @@ class SQLiteDatabaseManager {
     return this.db.prepare('SELECT id, name, director, email, created_at as createdAt, updated_at as updatedAt FROM organizations ORDER BY name ASC').all();
   }
 
-  public saveOrganization(org: Omit<Organization, 'id'> & { id?: number }): Organization {
-    if (!this.db) throw new Error('БД не подключена');
-    return this.runWithRetry(() => {
+  public async saveOrganization(org: Omit<Organization, 'id'> & { id?: number }): Promise<Organization> {
+    return this.runWriteTransaction(() => {
       if (org.id) {
         this.db.prepare('UPDATE organizations SET name = ?, director = ?, email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
           .run(org.name, org.director || '', org.email || '', org.id);
-        return this.db.prepare('SELECT id, name, director, email, created_at as createdAt, updated_at as updatedAt FROM organizations WHERE id = ?').get(org.id);
+        return this.db.prepare('SELECT id, name, director, email, created_at as createdAt, updated_at as updatedAt FROM organizations WHERE id = ?').get(org.id) as Organization;
       } else {
         const info = this.db.prepare('INSERT INTO organizations (name, director, email) VALUES (?, ?, ?)')
           .run(org.name, org.director || '', org.email || '');
-        return this.db.prepare('SELECT id, name, director, email, created_at as createdAt, updated_at as updatedAt FROM organizations WHERE id = ?').get(info.lastInsertRowid);
+        return this.db.prepare('SELECT id, name, director, email, created_at as createdAt, updated_at as updatedAt FROM organizations WHERE id = ?').get(info.lastInsertRowid) as Organization;
       }
     });
   }
 
-  public deleteOrganization(id: number): { success: boolean } {
-    if (!this.db) throw new Error('БД не подключена');
-    return this.runWithRetry(() => {
+  public async deleteOrganization(id: number): Promise<{ success: boolean }> {
+    return this.runWriteTransaction(() => {
       this.db.prepare('DELETE FROM organizations WHERE id = ?').run(id);
       return { success: true };
     });
@@ -484,24 +567,30 @@ class SQLiteDatabaseManager {
     `).all();
   }
 
-  public saveDepartment(dept: Omit<Department, 'id'> & { id?: number }): Department {
-    if (!this.db) throw new Error('БД не подключена');
-    return this.runWithRetry(() => {
+  public async saveDepartment(dept: Omit<Department, 'id'> & { id?: number }): Promise<Department> {
+    return this.runWriteTransaction(() => {
+      let targetId: number;
       if (dept.id) {
         this.db.prepare('UPDATE departments SET name = ?, short_name = ?, organization_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
           .run(dept.name, dept.shortName, dept.organizationId, dept.id);
-        return this.getDepartments().find((d) => d.id === dept.id)!;
+        targetId = dept.id;
       } else {
         const info = this.db.prepare('INSERT INTO departments (name, short_name, organization_id) VALUES (?, ?, ?)')
           .run(dept.name, dept.shortName, dept.organizationId);
-        return this.getDepartments().find((d) => d.id === info.lastInsertRowid)!;
+        targetId = Number(info.lastInsertRowid);
       }
+      return this.db.prepare(`
+        SELECT d.id, d.name, d.short_name as shortName, d.organization_id as organizationId, 
+               o.name as organizationName, d.created_at as createdAt, d.updated_at as updatedAt
+        FROM departments d
+        LEFT JOIN organizations o ON d.organization_id = o.id
+        WHERE d.id = ?
+      `).get(targetId) as Department;
     });
   }
 
-  public deleteDepartment(id: number): { success: boolean } {
-    if (!this.db) throw new Error('БД не подключена');
-    return this.runWithRetry(() => {
+  public async deleteDepartment(id: number): Promise<{ success: boolean }> {
+    return this.runWriteTransaction(() => {
       this.db.prepare('DELETE FROM departments WHERE id = ?').run(id);
       return { success: true };
     });
@@ -520,24 +609,31 @@ class SQLiteDatabaseManager {
     `).all();
   }
 
-  public saveEmployee(emp: Omit<Employee, 'id'> & { id?: number }): Employee {
-    if (!this.db) throw new Error('БД не подключена');
-    return this.runWithRetry(() => {
+  public async saveEmployee(emp: Omit<Employee, 'id'> & { id?: number }): Promise<Employee> {
+    return this.runWriteTransaction(() => {
+      let targetId: number;
       if (emp.id) {
         this.db.prepare('UPDATE employees SET full_name = ?, position = ?, department_short_name = ?, organization_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
           .run(emp.fullName, emp.position || '', emp.departmentShortName, emp.organizationId, emp.id);
-        return this.getEmployees().find((e) => e.id === emp.id)!;
+        targetId = emp.id;
       } else {
         const info = this.db.prepare('INSERT INTO employees (full_name, position, department_short_name, organization_id) VALUES (?, ?, ?, ?)')
           .run(emp.fullName, emp.position || '', emp.departmentShortName, emp.organizationId);
-        return this.getEmployees().find((e) => e.id === info.lastInsertRowid)!;
+        targetId = Number(info.lastInsertRowid);
       }
+      return this.db.prepare(`
+        SELECT e.id, e.full_name as fullName, e.position as position, 
+               e.department_short_name as departmentShortName, e.organization_id as organizationId, 
+               o.name as organizationName, e.created_at as createdAt, e.updated_at as updatedAt
+        FROM employees e
+        LEFT JOIN organizations o ON e.organization_id = o.id
+        WHERE e.id = ?
+      `).get(targetId) as Employee;
     });
   }
 
-  public deleteEmployee(id: number): { success: boolean } {
-    if (!this.db) throw new Error('БД не подключена');
-    return this.runWithRetry(() => {
+  public async deleteEmployee(id: number): Promise<{ success: boolean }> {
+    return this.runWriteTransaction(() => {
       this.db.prepare('DELETE FROM employees WHERE id = ?').run(id);
       return { success: true };
     });
@@ -549,22 +645,20 @@ class SQLiteDatabaseManager {
     return this.db.prepare('SELECT id, name, created_at as createdAt, updated_at as updatedAt FROM doc_types ORDER BY name ASC').all();
   }
 
-  public saveDocumentType(type: Omit<DocumentType, 'id'> & { id?: number }): DocumentType {
-    if (!this.db) throw new Error('БД не подключена');
-    return this.runWithRetry(() => {
+  public async saveDocumentType(type: Omit<DocumentType, 'id'> & { id?: number }): Promise<DocumentType> {
+    return this.runWriteTransaction(() => {
       if (type.id) {
         this.db.prepare('UPDATE doc_types SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(type.name, type.id);
-        return this.db.prepare('SELECT id, name, created_at as createdAt, updated_at as updatedAt FROM doc_types WHERE id = ?').get(type.id);
+        return this.db.prepare('SELECT id, name, created_at as createdAt, updated_at as updatedAt FROM doc_types WHERE id = ?').get(type.id) as DocumentType;
       } else {
         const info = this.db.prepare('INSERT INTO doc_types (name) VALUES (?)').run(type.name);
-        return this.db.prepare('SELECT id, name, created_at as createdAt, updated_at as updatedAt FROM doc_types WHERE id = ?').get(info.lastInsertRowid);
+        return this.db.prepare('SELECT id, name, created_at as createdAt, updated_at as updatedAt FROM doc_types WHERE id = ?').get(info.lastInsertRowid) as DocumentType;
       }
     });
   }
 
-  public deleteDocumentType(id: number): { success: boolean } {
-    if (!this.db) throw new Error('БД не подключена');
-    return this.runWithRetry(() => {
+  public async deleteDocumentType(id: number): Promise<{ success: boolean }> {
+    return this.runWriteTransaction(() => {
       this.db.prepare('DELETE FROM doc_types WHERE id = ?').run(id);
       return { success: true };
     });
@@ -576,25 +670,105 @@ class SQLiteDatabaseManager {
     return this.db.prepare('SELECT id, name, created_at as createdAt, updated_at as updatedAt FROM directions ORDER BY name ASC').all();
   }
 
-  public saveDirection(dir: Omit<Direction, 'id'> & { id?: number }): Direction {
-    if (!this.db) throw new Error('БД не подключена');
-    return this.runWithRetry(() => {
+  public async saveDirection(dir: Omit<Direction, 'id'> & { id?: number }): Promise<Direction> {
+    return this.runWriteTransaction(() => {
       if (dir.id) {
         this.db.prepare('UPDATE directions SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(dir.name, dir.id);
-        return this.db.prepare('SELECT id, name, created_at as createdAt, updated_at as updatedAt FROM directions WHERE id = ?').get(dir.id);
+        return this.db.prepare('SELECT id, name, created_at as createdAt, updated_at as updatedAt FROM directions WHERE id = ?').get(dir.id) as Direction;
       } else {
         const info = this.db.prepare('INSERT INTO directions (name) VALUES (?)').run(dir.name);
-        return this.db.prepare('SELECT id, name, created_at as createdAt, updated_at as updatedAt FROM directions WHERE id = ?').get(info.lastInsertRowid);
+        return this.db.prepare('SELECT id, name, created_at as createdAt, updated_at as updatedAt FROM directions WHERE id = ?').get(info.lastInsertRowid) as Direction;
       }
     });
   }
 
-  public deleteDirection(id: number): { success: boolean } {
-    if (!this.db) throw new Error('БД не подключена');
-    return this.runWithRetry(() => {
+  public async deleteDirection(id: number): Promise<{ success: boolean }> {
+    return this.runWriteTransaction(() => {
       this.db.prepare('DELETE FROM directions WHERE id = ?').run(id);
       return { success: true };
     });
+  }
+
+  // --- Количество документов (быстрый подсчет без чтения всех строк) ---
+  public getDocumentsCount(): number {
+    if (!this.db || !this.db.open) return 0;
+    try {
+      const row = this.db.prepare('SELECT count(*) as c FROM documents').get() as { c: number } | undefined;
+      return row ? row.c : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  // --- Получение документа по id (точечный запрос без полного сканирования таблицы) ---
+  public getDocumentById(id: number): DocumentRecord | null {
+    if (!this.db || !this.db.open) return null;
+    const row = this.db.prepare(`
+      SELECT d.id, d.doc_type_id as docTypeId, dt.name as docTypeName,
+             d.direction_id as directionId, dir.name as directionName,
+             d.outgoing_number as outgoingNumber, d.outgoing_date as outgoingDate,
+             d.incoming_number as incomingNumber, d.incoming_date as incomingDate,
+             d.subject, d.sender_id as senderId, s.name as senderName,
+             d.sender_dept_id as senderDepartmentId, d.sender_dept_name as senderDepartmentName,
+             d.sender_emp_id as senderEmployeeId, d.sender_emp_name as senderEmployeeName,
+             d.signatory_emp_id as signatoryEmployeeId, d.signatory_emp_name as signatoryEmployeeName,
+             d.recipient_id as recipientId, r.name as recipientName,
+             d.recipient_ids as recipientIdsRaw,
+             d.recipient_dept_ids as recipientDeptIdsRaw,
+             d.recipient_dept_names as recipientDepartmentNames,
+             d.file_path as filePath, d.sed_url as sedUrl, d.comments,
+             d.created_at as createdAt, d.updated_at as updatedAt
+      FROM documents d
+      LEFT JOIN doc_types dt ON d.doc_type_id = dt.id
+      LEFT JOIN directions dir ON d.direction_id = dir.id
+      LEFT JOIN organizations s ON d.sender_id = s.id
+      LEFT JOIN organizations r ON d.recipient_id = r.id
+      WHERE d.id = ?
+    `).get(id);
+
+    if (!row) return null;
+
+    let recipientIds: number[] = [];
+    if (row.recipientIdsRaw) {
+      try {
+        const parsed = JSON.parse(row.recipientIdsRaw);
+        if (Array.isArray(parsed)) recipientIds = parsed;
+      } catch {}
+    }
+    if (recipientIds.length === 0 && row.recipientId) {
+      recipientIds = [row.recipientId];
+    }
+
+    let recipientDepartmentIds: number[] = [];
+    if (row.recipientDeptIdsRaw) {
+      try {
+        const parsed = JSON.parse(row.recipientDeptIdsRaw);
+        if (Array.isArray(parsed)) recipientDepartmentIds = parsed;
+      } catch {}
+    }
+
+    let recipientName = row.recipientName || '—';
+    if (recipientIds.length > 1) {
+      const orgs = this.getOrganizations();
+      const names = recipientIds.map((rid) => orgs.find((o) => o.id === rid)?.name).filter(Boolean);
+      if (names.length > 0) {
+        recipientName = names.join(', ');
+      }
+    }
+
+    return {
+      ...row,
+      senderDepartmentId: row.senderDepartmentId || undefined,
+      senderDepartmentName: row.senderDepartmentName || undefined,
+      senderEmployeeId: row.senderEmployeeId || undefined,
+      senderEmployeeName: row.senderEmployeeName || undefined,
+      signatoryEmployeeId: row.signatoryEmployeeId || undefined,
+      signatoryEmployeeName: row.signatoryEmployeeName || undefined,
+      recipientName,
+      recipientIds,
+      recipientDepartmentIds,
+      recipientDepartmentNames: row.recipientDepartmentNames || undefined,
+    };
   }
 
   // --- CRUD Документы ---
@@ -669,9 +843,8 @@ class SQLiteDatabaseManager {
     });
   }
 
-  public saveDocument(doc: Omit<DocumentRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: number }): DocumentRecord {
-    if (!this.db) throw new Error('БД не подключена');
-    return this.runWithRetry(() => {
+  public async saveDocument(doc: Omit<DocumentRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: number }): Promise<DocumentRecord> {
+    return this.runWriteTransaction(() => {
       const recipientIds = doc.recipientIds || (doc.recipientId ? [doc.recipientId] : []);
       const primaryRecipientId = doc.recipientId || (recipientIds.length > 0 ? recipientIds[0] : null);
       const recipientIdsJson = recipientIds.length > 0 ? JSON.stringify(recipientIds) : null;
@@ -679,6 +852,8 @@ class SQLiteDatabaseManager {
         ? JSON.stringify(doc.recipientDepartmentIds)
         : null;
       const recipientDeptNames = doc.recipientDepartmentNames || null;
+
+      let targetId: number;
 
       if (doc.id) {
         this.db.prepare(`
@@ -700,7 +875,7 @@ class SQLiteDatabaseManager {
           doc.filePath || null, doc.sedUrl || null, doc.comments || null,
           doc.id
         );
-        return this.getDocuments().find((d) => d.id === doc.id)!;
+        targetId = doc.id;
       } else {
         const info = this.db.prepare(`
           INSERT INTO documents (
@@ -720,14 +895,17 @@ class SQLiteDatabaseManager {
           primaryRecipientId, recipientIdsJson, recipientDeptIdsJson, recipientDeptNames,
           doc.filePath || null, doc.sedUrl || null, doc.comments || null
         );
-        return this.getDocuments().find((d) => d.id === info.lastInsertRowid)!;
+        targetId = Number(info.lastInsertRowid);
       }
+
+      const saved = this.getDocumentById(targetId);
+      if (!saved) throw new Error('Не удалось прочитать сохраненный документ');
+      return saved;
     });
   }
 
-  public deleteDocument(id: number): { success: boolean } {
-    if (!this.db) throw new Error('БД не подключена');
-    return this.runWithRetry(() => {
+  public async deleteDocument(id: number): Promise<{ success: boolean }> {
+    return this.runWriteTransaction(() => {
       this.db.prepare('DELETE FROM documents WHERE id = ?').run(id);
       return { success: true };
     });

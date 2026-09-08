@@ -14,7 +14,7 @@ interface AppStoreData {
 
 const DEFAULT_CONFIG: DatabaseConfig = {
   dbPath: '',
-  busyTimeout: 5000,
+  busyTimeout: 10000,
   autoBackupOnStart: true,
   backupFolder: '',
   isNetworkPath: false,
