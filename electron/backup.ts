@@ -37,8 +37,11 @@ class BackupManager {
       const backupFileName = `${prefix}_${dateStr}.sqlite`;
       const targetBackupPath = path.join(backupFolder, backupFileName);
 
-      // Копируем файл БД
-      fs.copyFileSync(currentDbPath, targetBackupPath);
+      // Сначала пробуем безопасный SQLite Online Backup API (не конфликтует с активными сетевыми транзакциями)
+      const onlineOk = await dbManager.backupToFile(targetBackupPath);
+      if (!onlineOk) {
+        fs.copyFileSync(currentDbPath, targetBackupPath);
+      }
 
       const stats = fs.statSync(targetBackupPath);
       logger.log(
