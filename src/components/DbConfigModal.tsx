@@ -415,9 +415,10 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
               </div>
             </div>
 
-            <p className="text-[11px] text-amber-300 bg-amber-950/40 p-2.5 rounded-lg border border-amber-900/60 leading-relaxed">
-              <strong>Требование ТЗ:</strong> WAL-режим отключен, так как база расположена на сетевом накопителе (NFS/SMB), где разделяемая память (.shm) не поддерживается. Режим DELETE + busy_timeout={busyTimeout}мс гарантирует целостность данных при одновременной работе 6–10 пользователей.
-            </p>
+            <div className="text-[11px] text-amber-300 bg-amber-950/40 p-2.5 rounded-lg border border-amber-900/60 space-y-1 leading-relaxed">
+              <p><strong>Требование ТЗ:</strong> Режим журнала установлен в TRUNCATE / DELETE, так как база расположена на сетевом накопителе (CIFS/SMB), где разделяемая память WAL (.shm) не поддерживается.</p>
+              <p className="text-amber-200/90"><strong>Для Astra Linux 1.7 (CIFS/SMB):</strong> Рекомендуется монтировать сетевой ресурс с опцией <code className="bg-amber-900/60 px-1 py-0.5 rounded text-white font-mono">nobrl</code> (например, в <code className="bg-amber-900/60 px-1 py-0.5 rounded text-white font-mono">/etc/fstab</code>: <code className="text-white font-mono">...,nobrl,file_mode=0777,dir_mode=0777</code>) для предотвращения ошибок удаленной блокировки.</p>
+            </div>
           </div>
 
           {/* Результат проверки подключения */}

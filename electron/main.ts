@@ -170,6 +170,7 @@ function setupIpcHandlers() {
       isAccessible: access.accessible,
       lastSync: cfg.lastConnected || new Date().toISOString(),
       recordsCount: count,
+      mountWarning: access.mountWarning,
     };
   });
 

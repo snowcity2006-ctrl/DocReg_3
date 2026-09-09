@@ -95,6 +95,7 @@ export interface DbStatus {
   isAccessible: boolean;
   path: string;
   busyTimeout: number;
+  mountWarning?: string;
 }
 
 export interface BackupFileInfo {
