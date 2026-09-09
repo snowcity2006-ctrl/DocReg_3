@@ -50,6 +50,43 @@ try {
   // При сборке или в dev-окружении
 }
 
+/**
+ * Безопасное копирование файла без вызова системного fchmod (который в Astra Linux
+ * вызывает ошибку EPERM на смонтированных дисках /mnt/..., NTFS, FAT и CIFS)
+ */
+export function safeCopyFile(source: string, destination: string): void {
+  const destDir = path.dirname(destination);
+  if (!fs.existsSync(destDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
+  }
+
+  // 1. Попытка прямой бинарной перезаписи буфера (без fchmod)
+  try {
+    const data = fs.readFileSync(source);
+    fs.writeFileSync(destination, data, { flag: 'w' });
+    return;
+  } catch (err1: any) {
+    logger.log('warn', 'db', `safeCopyFile: прямая запись через буфер не удалась (${err1.message}), пробуем дескриптор...`);
+  }
+
+  // 2. Попытка потоковой записи через файловый дескриптор
+  try {
+    const data = fs.readFileSync(source);
+    const fd = fs.openSync(destination, 'w');
+    fs.writeSync(fd, data);
+    try {
+      fs.fsyncSync(fd);
+    } catch {}
+    fs.closeSync(fd);
+    return;
+  } catch (err2: any) {
+    logger.log('warn', 'db', `safeCopyFile: запись через дескриптор не удалась (${err2.message}), пробуем copyFileSync...`);
+  }
+
+  // 3. Fallback: стандартный fs.copyFileSync
+  fs.copyFileSync(source, destination);
+}
+
 class SQLiteDatabaseManager {
   private db: any = null;
   private currentDbPath: string = '';
@@ -168,43 +205,6 @@ class SQLiteDatabaseManager {
     }
     throw lastError;
   }
-
-/**
- * Безопасное копирование файла без вызова системного fchmod (который в Astra Linux
- * вызывает ошибку EPERM на смонтированных дисках /mnt/..., NTFS, FAT и CIFS)
- */
-export function safeCopyFile(source: string, destination: string): void {
-  const destDir = path.dirname(destination);
-  if (!fs.existsSync(destDir)) {
-    fs.mkdirSync(destDir, { recursive: true });
-  }
-
-  // 1. Попытка прямой бинарной перезаписи буфера (без fchmod)
-  try {
-    const data = fs.readFileSync(source);
-    fs.writeFileSync(destination, data, { flag: 'w' });
-    return;
-  } catch (err1: any) {
-    logger.log('warn', 'db', `safeCopyFile: прямая запись через буфер не удалась (${err1.message}), пробуем дескриптор...`);
-  }
-
-  // 2. Попытка потоковой записи через файловый дескриптор
-  try {
-    const data = fs.readFileSync(source);
-    const fd = fs.openSync(destination, 'w');
-    fs.writeSync(fd, data);
-    try {
-      fs.fsyncSync(fd);
-    } catch {}
-    fs.closeSync(fd);
-    return;
-  } catch (err2: any) {
-    logger.log('warn', 'db', `safeCopyFile: запись через дескриптор не удалась (${err2.message}), пробуем copyFileSync...`);
-  }
-
-  // 3. Fallback: стандартный fs.copyFileSync
-  fs.copyFileSync(source, destination);
-}
 
   /**
    * Безопасное выполнение операций записи в SQLite:
