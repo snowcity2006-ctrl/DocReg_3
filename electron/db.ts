@@ -169,13 +169,51 @@ class SQLiteDatabaseManager {
     throw lastError;
   }
 
+/**
+ * Безопасное копирование файла без вызова системного fchmod (который в Astra Linux
+ * вызывает ошибку EPERM на смонтированных дисках /mnt/..., NTFS, FAT и CIFS)
+ */
+export function safeCopyFile(source: string, destination: string): void {
+  const destDir = path.dirname(destination);
+  if (!fs.existsSync(destDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
+  }
+
+  // 1. Попытка прямой бинарной перезаписи буфера (без fchmod)
+  try {
+    const data = fs.readFileSync(source);
+    fs.writeFileSync(destination, data, { flag: 'w' });
+    return;
+  } catch (err1: any) {
+    logger.log('warn', 'db', `safeCopyFile: прямая запись через буфер не удалась (${err1.message}), пробуем дескриптор...`);
+  }
+
+  // 2. Попытка потоковой записи через файловый дескриптор
+  try {
+    const data = fs.readFileSync(source);
+    const fd = fs.openSync(destination, 'w');
+    fs.writeSync(fd, data);
+    try {
+      fs.fsyncSync(fd);
+    } catch {}
+    fs.closeSync(fd);
+    return;
+  } catch (err2: any) {
+    logger.log('warn', 'db', `safeCopyFile: запись через дескриптор не удалась (${err2.message}), пробуем copyFileSync...`);
+  }
+
+  // 3. Fallback: стандартный fs.copyFileSync
+  fs.copyFileSync(source, destination);
+}
+
   /**
    * Безопасное выполнение операций записи в SQLite:
    * 1. Вся очередь записи сериализуется в процессе через writeQueue.
-   * 2. Выполняется попытка короткой транзакции BEGIN IMMEDIATE.
-   * 3. Если файловая система CIFS/SMB отклоняет повышение блокировки (BEGIN IMMEDIATE -> database is locked),
-   *    выполняется автоматический откат и операция записи производится напрямую в атомарном autocommit-режиме,
-   *    что исключает блокировки POSIX fcntl на SMB-сервере.
+   * 2. Выполняется прямое атомарное выполнение оператора в режиме autocommit (или пользовательской транзакции).
+   * 3. При временной блокировке сетевого файла (SQLITE_BUSY / database is locked)
+   *    производится серия повторных попыток с экспоненциальным бэкоффом (runWithRetry).
+   * 4. Отказ от искусственного 'BEGIN IMMEDIATE' на уровне JavaScript исключает сбои
+   *    POSIX fcntl lock promotion на файловых системах CIFS/SMB в Astra Linux 1.7.
    */
   private runWriteTransaction<T>(operation: () => T): Promise<T> {
     const task = async (): Promise<T> => {
@@ -189,35 +227,7 @@ class SQLiteDatabaseManager {
           } catch {}
         }
 
-        try {
-          this.db.exec('BEGIN IMMEDIATE;');
-          try {
-            const result = operation();
-            this.db.exec('COMMIT;');
-            return result;
-          } catch (opErr) {
-            if (this.db && this.db.open && this.db.inTransaction) {
-              try {
-                this.db.exec('ROLLBACK;');
-              } catch {}
-            }
-            throw opErr;
-          }
-        } catch (txErr: any) {
-          const msg = String(txErr?.message || '');
-          // Если BEGIN IMMEDIATE не поддерживается на CIFS-ресурсе без nobrl
-          // пробуем прямое атомарное выполнение оператора в режиме autocommit
-          if (msg.includes('database is locked') || msg.includes('SQLITE_BUSY')) {
-            if (this.db && this.db.open && this.db.inTransaction) {
-              try {
-                this.db.exec('ROLLBACK;');
-              } catch {}
-            }
-            logger.log('warn', 'db', 'Переход на прямое выполнение оператора (autocommit-режим) в обход BEGIN IMMEDIATE');
-            return operation();
-          }
-          throw txErr;
-        }
+        return operation();
       });
     };
 
@@ -342,9 +352,23 @@ class SQLiteDatabaseManager {
             }
           }
 
-          // Копируем готовый файл базы данных на сетевой диск
-          fs.copyFileSync(tempFile, dbPath);
-          logger.log('info', 'db', `Инициализированный файл БД успешно скопирован на сетевой ресурс: ${dbPath}`);
+          // Копируем готовый файл базы данных на целевой диск без вызова fchmod
+          try {
+            safeCopyFile(tempFile, dbPath);
+            logger.log('info', 'db', `Инициализированный файл БД успешно скопирован в: ${dbPath}`);
+          } catch (copyErr: any) {
+            logger.log('warn', 'db', `Не удалось скопировать временный файл (${copyErr.message}), выполняем прямую инициализацию на носителе...`);
+            const directDb = new DatabaseConstructor(dbPath, { timeout: effectiveTimeout });
+            try {
+              directDb.pragma('journal_mode = TRUNCATE');
+              directDb.pragma('synchronous = NORMAL');
+              directDb.pragma('foreign_keys = ON');
+              directDb.pragma('temp_store = MEMORY');
+              this.populateFullSchemaAndDefaults(directDb);
+            } finally {
+              try { directDb.close(); } catch {}
+            }
+          }
         } finally {
           try {
             if (fs.existsSync(tempFile)) {

@@ -6,7 +6,7 @@ import path from 'path';
 import { BackupFileInfo } from '../src/types';
 import { logger } from './logger';
 import { store } from './store';
-import { dbManager } from './db';
+import { dbManager, safeCopyFile } from './db';
 
 class BackupManager {
   /**
@@ -40,7 +40,7 @@ class BackupManager {
       // Сначала пробуем безопасный SQLite Online Backup API (не конфликтует с активными сетевыми транзакциями)
       const onlineOk = await dbManager.backupToFile(targetBackupPath);
       if (!onlineOk) {
-        fs.copyFileSync(currentDbPath, targetBackupPath);
+        safeCopyFile(currentDbPath, targetBackupPath);
       }
 
       const stats = fs.statSync(targetBackupPath);
@@ -120,8 +120,8 @@ class BackupManager {
       // Создаем страховку текущей базы перед перезаписью
       await this.createBackup(false);
 
-      // Копируем файл бэкапа на место рабочей БД
-      fs.copyFileSync(backupPath, currentDbPath);
+      // Копируем файл бэкапа на место рабочей БД без fchmod
+      safeCopyFile(backupPath, currentDbPath);
 
       // Переподключаем БД
       await dbManager.connect(currentDbPath, dbConfig.busyTimeout);

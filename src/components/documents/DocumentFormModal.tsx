@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   FileText,
   Calendar,
@@ -13,11 +13,7 @@ import {
   Plus,
   Paperclip,
   ClipboardPaste,
-  ChevronDown,
-  Search,
   Layers,
-  CheckSquare,
-  Square,
   User,
   UserCheck,
 } from 'lucide-react';
@@ -30,6 +26,8 @@ import {
   Employee,
 } from '../../types';
 import { electronBridge } from '../../services/electronBridge';
+import { SearchableCombobox, ComboboxOption } from './SearchableCombobox';
+import { SearchableMultiSelect, MultiSelectOption } from './SearchableMultiSelect';
 
 interface DocumentFormModalProps {
   isOpen: boolean;
@@ -84,15 +82,9 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
 
   // Множественный выбор получателей (Организации)
   const [recipientIds, setRecipientIds] = useState<number[]>([]);
-  const [isRecipientDropdownOpen, setIsRecipientDropdownOpen] = useState(false);
-  const [recipientSearchQuery, setRecipientSearchQuery] = useState('');
-  const recipientDropdownRef = useRef<HTMLDivElement>(null);
 
   // Множественный выбор структурных подразделений для Получателя
   const [recipientDepartmentIds, setRecipientDepartmentIds] = useState<number[]>([]);
-  const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
-  const [deptSearchQuery, setDeptSearchQuery] = useState('');
-  const deptDropdownRef = useRef<HTMLDivElement>(null);
 
   const [filePath, setFilePath] = useState('');
   const [sedUrl, setSedUrl] = useState('');
@@ -101,29 +93,6 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
   const [pastedFeedback, setPastedFeedback] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
-  // Закрытие выпадающих списков при клике вне компонента
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        recipientDropdownRef.current &&
-        !recipientDropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsRecipientDropdownOpen(false);
-      }
-      if (
-        deptDropdownRef.current &&
-        !deptDropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsDeptDropdownOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
 
   useEffect(() => {
     if (initialData) {
@@ -173,10 +142,6 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
       setComments('');
     }
     setError(null);
-    setIsRecipientDropdownOpen(false);
-    setIsDeptDropdownOpen(false);
-    setRecipientSearchQuery('');
-    setDeptSearchQuery('');
   }, [initialData, isOpen, documentTypes, directions]);
 
   // Автоматический выбор добавленного сотрудника (для «Подписал» или «Исполнитель»)
@@ -272,39 +237,13 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
     );
   };
 
-  const removeDepartment = (deptId: number, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setRecipientDepartmentIds((prev) => prev.filter((id) => id !== deptId));
-  };
+  // Доступные подразделения для получателя: при выборе получателей фильтруются по ним, иначе доступны все
+  const availableDepartments = useMemo(() => {
+    if (recipientIds.length === 0) return departments;
+    return departments.filter((d) => recipientIds.includes(d.organizationId));
+  }, [departments, recipientIds]);
 
-  const handleSelectAllDepartments = () => {
-    setRecipientDepartmentIds(availableDepartments.map((d) => d.id));
-  };
-
-  const handleClearDepartments = () => {
-    setRecipientDepartmentIds([]);
-  };
-
-  // Фильтрация организаций по поисковому запросу
-  const filteredOrganizations = organizations.filter((org) =>
-    org.name.toLowerCase().includes(recipientSearchQuery.toLowerCase())
-  );
-
-  // Доступные подразделения: приоритет отдается выбранным получателям, либо всем если получатели не выбраны
-  const availableDepartments = departments.filter((d) => {
-    if (recipientIds.length === 0) return true;
-    return recipientIds.includes(d.organizationId);
-  });
-
-  const filteredDepartments = availableDepartments.filter((d) => {
-    const q = deptSearchQuery.toLowerCase();
-    const nameMatch = d.name.toLowerCase().includes(q);
-    const shortMatch = d.shortName.toLowerCase().includes(q);
-    const orgMatch = d.organizationName?.toLowerCase().includes(q);
-    return nameMatch || shortMatch || orgMatch;
-  });
-
-  // Обработка выбора для Отправителя: Организация, СП, Исполнитель (Сотрудник)
+  // Обработка выбора для Отправителя: Организация, СП, Исполнитель (Сотрудник), Подписал
   const handleSenderOrgChange = (newOrgId: number | '') => {
     setSenderId(newOrgId);
     if (newOrgId) {
@@ -349,16 +288,6 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
         if (!senderId || senderId !== dept.organizationId) {
           setSenderId(dept.organizationId);
         }
-        if (senderEmployeeId) {
-          const emp = employees.find((e) => e.id === senderEmployeeId);
-          if (
-            emp &&
-            emp.departmentShortName.toLowerCase() !== dept.shortName.toLowerCase() &&
-            emp.organizationId !== dept.organizationId
-          ) {
-            setSenderEmployeeId('');
-          }
-        }
       }
     }
   };
@@ -371,48 +300,110 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
         if (!senderId || senderId !== emp.organizationId) {
           setSenderId(emp.organizationId);
         }
-        const matchingDept = departments.find(
-          (d) =>
-            d.organizationId === emp.organizationId &&
-            d.shortName.toLowerCase() === emp.departmentShortName.toLowerCase()
-        );
-        if (matchingDept) {
-          setSenderDepartmentId(matchingDept.id);
+        // Если СП отправителя еще не выбрано, можно аккуратно подставить СП сотрудника
+        if (!senderDepartmentId && emp.departmentShortName) {
+          const matchingDept = departments.find(
+            (d) =>
+              d.organizationId === emp.organizationId &&
+              d.shortName.toLowerCase() === emp.departmentShortName.toLowerCase()
+          );
+          if (matchingDept) {
+            setSenderDepartmentId(matchingDept.id);
+          }
         }
       }
     }
   };
 
   // Фильтрация СП для отправителя
-  const filteredSenderDepartments = departments.filter((d) => {
-    if (!senderId) return true;
-    return d.organizationId === senderId;
-  });
+  const filteredSenderDepartments = useMemo(() => {
+    return departments.filter((d) => {
+      if (!senderId) return true;
+      return d.organizationId === senderId;
+    });
+  }, [departments, senderId]);
 
-  // Фильтрация сотрудников для отправителя
-  const filteredSenderEmployees = employees.filter((e) => {
-    if (senderDepartmentId) {
-      const dept = departments.find((d) => d.id === senderDepartmentId);
-      if (dept) {
-        return (
-          e.organizationId === dept.organizationId &&
-          e.departmentShortName.toLowerCase() === dept.shortName.toLowerCase()
-        );
+  // Фильтрация сотрудников для «Подписал»:
+  // Включает всех сотрудников организации отправителя (или всех если не выбрана).
+  // Всегда включает текущего выбранного исполнителя или подписавшего, гарантируя возможность выбора одного и того же человека!
+  const availableSignatoryEmployees = useMemo(() => {
+    return employees.filter((e) => {
+      if (e.id === signatoryEmployeeId || e.id === senderEmployeeId) return true;
+      if (senderId) {
+        return e.organizationId === senderId;
       }
-    }
-    if (senderId) {
-      return e.organizationId === senderId;
-    }
-    return true;
-  });
+      return true;
+    });
+  }, [employees, senderId, signatoryEmployeeId, senderEmployeeId]);
 
-  // Фильтрация сотрудников для «Подписал» (по организации отправителя, если выбрана)
-  const availableSignatoryEmployees = employees.filter((e) => {
-    if (senderId) {
-      return e.organizationId === senderId;
-    }
-    return true;
-  });
+  // Фильтрация сотрудников для «Исполнитель»:
+  // Включает всех сотрудников организации отправителя.
+  // Также всегда включает текущего подписавшего, гарантируя возможность выбора одного и того же человека!
+  const availableExecutorEmployees = useMemo(() => {
+    return employees.filter((e) => {
+      if (e.id === senderEmployeeId || e.id === signatoryEmployeeId) return true;
+      if (senderId) {
+        return e.organizationId === senderId;
+      }
+      return true;
+    });
+  }, [employees, senderId, senderEmployeeId, signatoryEmployeeId]);
+
+  // Опции для комбобоксов быстрого ввода с клавиатуры
+  const senderOrgOptions: ComboboxOption[] = useMemo(() => {
+    return organizations.map((org) => ({
+      id: org.id,
+      label: org.name,
+      searchStr: org.name,
+    }));
+  }, [organizations]);
+
+  const senderDeptOptions: ComboboxOption[] = useMemo(() => {
+    return filteredSenderDepartments.map((dept) => ({
+      id: dept.id,
+      label: dept.shortName ? `${dept.shortName} — ${dept.name}` : dept.name,
+      badge: !senderId && dept.organizationName ? dept.organizationName : undefined,
+      searchStr: `${dept.name} ${dept.shortName || ''} ${dept.organizationName || ''}`,
+    }));
+  }, [filteredSenderDepartments, senderId]);
+
+  const signatoryOptions: ComboboxOption[] = useMemo(() => {
+    return availableSignatoryEmployees.map((emp) => ({
+      id: emp.id,
+      label: emp.fullName,
+      subLabel: emp.departmentShortName ? `СП: ${emp.departmentShortName}` : undefined,
+      badge: !senderId && emp.organizationName ? emp.organizationName : undefined,
+      searchStr: `${emp.fullName} ${emp.departmentShortName || ''} ${emp.position || ''} ${emp.organizationName || ''}`,
+    }));
+  }, [availableSignatoryEmployees, senderId]);
+
+  const executorOptions: ComboboxOption[] = useMemo(() => {
+    return availableExecutorEmployees.map((emp) => ({
+      id: emp.id,
+      label: emp.fullName,
+      subLabel: emp.departmentShortName ? `СП: ${emp.departmentShortName}` : undefined,
+      badge: !senderId && emp.organizationName ? emp.organizationName : undefined,
+      searchStr: `${emp.fullName} ${emp.departmentShortName || ''} ${emp.position || ''} ${emp.organizationName || ''}`,
+    }));
+  }, [availableExecutorEmployees, senderId]);
+
+  const recipientOrgOptions: MultiSelectOption[] = useMemo(() => {
+    return organizations.map((org) => ({
+      id: org.id,
+      label: org.name,
+      searchStr: org.name,
+    }));
+  }, [organizations]);
+
+  const recipientDeptOptions: MultiSelectOption[] = useMemo(() => {
+    return availableDepartments.map((dept) => ({
+      id: dept.id,
+      label: dept.shortName || dept.name,
+      subLabel: dept.shortName ? dept.name : undefined,
+      badge: dept.organizationName,
+      searchStr: `${dept.name} ${dept.shortName || ''} ${dept.organizationName || ''}`,
+    }));
+  }, [availableDepartments]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -499,23 +490,6 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
   const selectedSenderDept = departments.find((d) => d.id === Number(senderDepartmentId));
   const selectedSenderEmp = employees.find((e) => e.id === Number(senderEmployeeId));
   const selectedSignatoryEmp = employees.find((e) => e.id === Number(signatoryEmployeeId));
-
-  // Взаимное переключение выпадающих списков получателя и СП (предотвращает их взаимное перекрытие)
-  const toggleRecipientDropdown = () => {
-    setIsRecipientDropdownOpen((prev) => {
-      const next = !prev;
-      if (next) setIsDeptDropdownOpen(false);
-      return next;
-    });
-  };
-
-  const toggleDeptDropdown = () => {
-    setIsDeptDropdownOpen((prev) => {
-      const next = !prev;
-      if (next) setIsRecipientDropdownOpen(false);
-      return next;
-    });
-  };
 
   if (!isOpen) return null;
 
@@ -719,29 +693,16 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
               <label className="block text-[11px] font-medium text-gray-400 mb-1 truncate">
                 Организация
               </label>
-              <div className="flex gap-2 min-w-0 w-full items-center">
-                <select
-                  value={senderId}
-                  onChange={(e) => handleSenderOrgChange(e.target.value ? Number(e.target.value) : '')}
-                  title={selectedSenderOrg ? selectedSenderOrg.name : undefined}
-                  className="w-full min-w-0 flex-1 truncate px-3.5 py-2 bg-[#171A21] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] focus:outline-none focus:border-blue-500 transition-colors"
-                >
-                  <option value="">-- Выберите организацию-отправителя --</option>
-                  {organizations.map((org) => (
-                    <option key={org.id} value={org.id} title={org.name}>
-                      {org.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={onOpenNewOrgModal}
-                  title="Добавить новую организацию в справочник"
-                  className="p-2 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30 transition-colors cursor-pointer flex items-center justify-center shrink-0"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
+              <SearchableCombobox
+                id="sender-org-combobox"
+                options={senderOrgOptions}
+                value={senderId}
+                onChange={handleSenderOrgChange}
+                placeholder="-- Введите название или выберите организацию --"
+                emptyMessage="Организации не найдены"
+                onAddNew={onOpenNewOrgModal}
+                addNewTitle="Добавить новую организацию в справочник"
+              />
             </div>
 
             {/* Структурное подразделение */}
@@ -761,32 +722,19 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
                   </button>
                 )}
               </div>
-              <div className="flex gap-2 min-w-0 w-full items-center">
-                <select
-                  value={senderDepartmentId}
-                  onChange={(e) => handleSenderDeptChange(e.target.value ? Number(e.target.value) : '')}
-                  title={selectedSenderDept ? `${selectedSenderDept.shortName} — ${selectedSenderDept.name}` : undefined}
-                  className="w-full min-w-0 flex-1 truncate px-3 py-2 bg-[#171A21] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] focus:outline-none focus:border-blue-500 transition-colors"
-                >
-                  <option value="">-- Не выбрано --</option>
-                  {filteredSenderDepartments.map((dept) => (
-                    <option key={dept.id} value={dept.id} title={`${dept.shortName} — ${dept.name}`}>
-                      {dept.shortName} — {dept.name} {!senderId && dept.organizationName ? `(${dept.organizationName})` : ''}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={onOpenNewDepartmentModal}
-                  title="Добавить структурное подразделение в справочник"
-                  className="p-2 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30 transition-colors cursor-pointer flex items-center justify-center shrink-0"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
+              <SearchableCombobox
+                id="sender-dept-combobox"
+                options={senderDeptOptions}
+                value={senderDepartmentId}
+                onChange={handleSenderDeptChange}
+                placeholder="-- Введите название СП или выберите --"
+                emptyMessage="Подразделения не найдены"
+                onAddNew={onOpenNewDepartmentModal}
+                addNewTitle="Добавить структурное подразделение в справочник"
+              />
             </div>
 
-            {/* Выбор Подписал и Исполнитель: адаптивная сетка с min-w-0 и предотвращением перекрытия */}
+            {/* Выбор Подписал и Исполнитель: адаптивная сетка с min-w-0, поиском с клавиатуры и возможностью выбора одного человека */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4 pt-0.5 min-w-0 w-full">
               
               {/* Подписал (Сотрудник) */}
@@ -796,42 +744,46 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
                     <UserCheck className="w-3 h-3 text-emerald-400 shrink-0" />
                     <span className="truncate">Подписал</span>
                   </label>
-                  {signatoryEmployeeId && (
-                    <button
-                      type="button"
-                      onClick={() => setSignatoryEmployeeId('')}
-                      className="text-[10px] text-gray-500 hover:text-rose-400 transition-colors shrink-0"
-                    >
-                      Сбросить
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {senderEmployeeId && signatoryEmployeeId !== senderEmployeeId && (
+                      <button
+                        type="button"
+                        onClick={() => handleSignatoryEmployeeChange(senderEmployeeId)}
+                        title="Выбрать того же человека, что указан исполнителем"
+                        className="text-[10px] text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
+                      >
+                        Как у «Исполнитель»
+                      </button>
+                    )}
+                    {senderEmployeeId && signatoryEmployeeId && senderEmployeeId === signatoryEmployeeId && (
+                      <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded font-medium">
+                        ✓ Тот же сотрудник
+                      </span>
+                    )}
+                    {signatoryEmployeeId && (
+                      <button
+                        type="button"
+                        onClick={() => setSignatoryEmployeeId('')}
+                        className="text-[10px] text-gray-500 hover:text-rose-400 transition-colors"
+                      >
+                        Сбросить
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="flex gap-2 min-w-0 w-full items-center">
-                  <select
-                    value={signatoryEmployeeId}
-                    onChange={(e) => handleSignatoryEmployeeChange(e.target.value ? Number(e.target.value) : '')}
-                    title={selectedSignatoryEmp ? `${selectedSignatoryEmp.fullName} (${selectedSignatoryEmp.departmentShortName || ''})` : undefined}
-                    className="w-full min-w-0 flex-1 truncate px-3 py-2 bg-[#171A21] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] focus:outline-none focus:border-blue-500 transition-colors"
-                  >
-                    <option value="">-- Не выбрано --</option>
-                    {(availableSignatoryEmployees.length > 0 ? availableSignatoryEmployees : employees).map((emp) => (
-                      <option key={emp.id} value={emp.id} title={`${emp.fullName} (${emp.departmentShortName})`}>
-                        {emp.fullName} ({emp.departmentShortName}) {!senderId && emp.organizationName ? `— ${emp.organizationName}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPendingEmployeeTarget('signatory');
-                      onOpenNewEmployeeModal();
-                    }}
-                    title="Добавить сотрудника в справочник"
-                    className="p-2 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30 transition-colors cursor-pointer flex items-center justify-center shrink-0"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </div>
+                <SearchableCombobox
+                  id="signatory-emp-combobox"
+                  options={signatoryOptions}
+                  value={signatoryEmployeeId}
+                  onChange={handleSignatoryEmployeeChange}
+                  placeholder="-- Введите ФИО или выберите сотрудника --"
+                  emptyMessage="Сотрудники не найдены"
+                  onAddNew={() => {
+                    setPendingEmployeeTarget('signatory');
+                    onOpenNewEmployeeModal();
+                  }}
+                  addNewTitle="Добавить сотрудника в справочник"
+                />
               </div>
 
               {/* Исполнитель (Сотрудник) */}
@@ -841,42 +793,46 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
                     <User className="w-3 h-3 text-blue-400 shrink-0" />
                     <span className="truncate">Исполнитель (Сотрудник)</span>
                   </label>
-                  {senderEmployeeId && (
-                    <button
-                      type="button"
-                      onClick={() => setSenderEmployeeId('')}
-                      className="text-[10px] text-gray-500 hover:text-rose-400 transition-colors shrink-0"
-                    >
-                      Сбросить
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {signatoryEmployeeId && senderEmployeeId !== signatoryEmployeeId && (
+                      <button
+                        type="button"
+                        onClick={() => handleSenderEmployeeChange(signatoryEmployeeId)}
+                        title="Выбрать того же человека, что подписал документ"
+                        className="text-[10px] text-blue-400 hover:text-blue-300 font-medium transition-colors"
+                      >
+                        Как у «Подписал»
+                      </button>
+                    )}
+                    {senderEmployeeId && signatoryEmployeeId && senderEmployeeId === signatoryEmployeeId && (
+                      <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded font-medium">
+                        ✓ Тот же сотрудник
+                      </span>
+                    )}
+                    {senderEmployeeId && (
+                      <button
+                        type="button"
+                        onClick={() => setSenderEmployeeId('')}
+                        className="text-[10px] text-gray-500 hover:text-rose-400 transition-colors"
+                      >
+                        Сбросить
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="flex gap-2 min-w-0 w-full items-center">
-                  <select
-                    value={senderEmployeeId}
-                    onChange={(e) => handleSenderEmployeeChange(e.target.value ? Number(e.target.value) : '')}
-                    title={selectedSenderEmp ? `${selectedSenderEmp.fullName} (${selectedSenderEmp.departmentShortName || ''})` : undefined}
-                    className="w-full min-w-0 flex-1 truncate px-3 py-2 bg-[#171A21] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] focus:outline-none focus:border-blue-500 transition-colors"
-                  >
-                    <option value="">-- Не выбрано --</option>
-                    {filteredSenderEmployees.map((emp) => (
-                      <option key={emp.id} value={emp.id} title={`${emp.fullName} (${emp.departmentShortName})`}>
-                        {emp.fullName} ({emp.departmentShortName}) {!senderId && emp.organizationName ? `— ${emp.organizationName}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPendingEmployeeTarget('executor');
-                      onOpenNewEmployeeModal();
-                    }}
-                    title="Добавить сотрудника в справочник"
-                    className="p-2 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30 transition-colors cursor-pointer flex items-center justify-center shrink-0"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </div>
+                <SearchableCombobox
+                  id="executor-emp-combobox"
+                  options={executorOptions}
+                  value={senderEmployeeId}
+                  onChange={handleSenderEmployeeChange}
+                  placeholder="-- Введите ФИО или выберите сотрудника --"
+                  emptyMessage="Сотрудники не найдены"
+                  onAddNew={() => {
+                    setPendingEmployeeTarget('executor');
+                    onOpenNewEmployeeModal();
+                  }}
+                  addNewTitle="Добавить сотрудника в справочник"
+                />
               </div>
 
             </div>
@@ -884,329 +840,39 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
 
           {/* 5. ПОЛУЧАТЕЛЬ (Множественный выбор организаций) и СТРУКТУРНЫЕ ПОДРАЗДЕЛЕНИЯ ПОЛУЧАТЕЛЯ */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4 min-w-0 w-full">
-            
-            {/* 5.1 Множественный выбор: Получатель (Организации) */}
-            <div className={`min-w-0 w-full relative ${isRecipientDropdownOpen ? 'z-40' : 'z-20'}`} ref={recipientDropdownRef}>
-              <div className="flex items-center justify-between gap-2 mb-1.5 min-w-0">
-                <label className="font-semibold text-gray-300 flex items-center gap-1 min-w-0 truncate">
-                  <Building2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                  <span className="truncate">Получатель (множественный выбор)</span>
-                </label>
-                {recipientIds.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleClearRecipients}
-                    className="text-[11px] text-gray-400 hover:text-rose-400 transition-colors cursor-pointer shrink-0"
-                  >
-                    Очистить ({recipientIds.length})
-                  </button>
-                )}
-              </div>
+            {/* 5.1 Множественный выбор: Получатель (Организации) с прямым поиском с клавиатуры */}
+            <SearchableMultiSelect
+              id="recipient-orgs-multiselect"
+              label="Получатель (множественный выбор)"
+              icon={<Building2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
+              options={recipientOrgOptions}
+              selectedIds={recipientIds}
+              onChange={setRecipientIds}
+              placeholder="-- Введите название организации или выберите --"
+              emptyMessage="Организации не найдены"
+              onAddNew={onOpenNewOrgModal}
+              addNewTitle="Добавить новую организацию в справочник"
+              chipColor="blue"
+            />
 
-              <div className="flex gap-2 min-w-0 w-full items-center">
-                {/* Триггер выпадающего списка с чипами */}
-                <div
-                  onClick={toggleRecipientDropdown}
-                  className={`w-full min-w-0 flex-1 min-h-[42px] px-3 py-2 bg-[#0F1115] border ${
-                    isRecipientDropdownOpen ? 'border-blue-500 ring-1 ring-blue-500/30' : 'border-[#2D3139]'
-                  } rounded-xl cursor-pointer flex items-center justify-between gap-2 transition-colors`}
-                >
-                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1 min-w-0 flex-1">
-                    {recipientIds.length === 0 ? (
-                      <span className="text-gray-500 select-none truncate">
-                        -- Выберите одного или нескольких получателей --
-                      </span>
-                    ) : (
-                      organizations
-                        .filter((org) => recipientIds.includes(org.id))
-                        .map((org) => (
-                          <span
-                            key={org.id}
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600/20 text-blue-300 border border-blue-500/40 rounded-lg text-[11px] font-medium max-w-full"
-                          >
-                            <span className="truncate max-w-[150px]">{org.name}</span>
-                            <button
-                              type="button"
-                              onClick={(e) => removeRecipient(org.id, e)}
-                              className="text-blue-400 hover:text-rose-400 p-0.5 rounded-md hover:bg-white/10 transition-colors shrink-0"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ))
-                    )}
-                  </div>
-                  <ChevronDown
-                    className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${
-                      isRecipientDropdownOpen ? 'rotate-180' : ''
-                    }`}
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={onOpenNewOrgModal}
-                  title="Добавить новую организацию в справочник"
-                  className="p-2.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30 transition-colors cursor-pointer flex items-center justify-center shrink-0"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Выпадающее окно множественного выбора получателей */}
-              {isRecipientDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-[#1F222B] border border-[#2D3139] rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-100">
-                  {/* Поиск и быстрые действия */}
-                  <div className="p-2.5 border-b border-[#2D3139] bg-[#171A21] space-y-2">
-                    <div className="relative">
-                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
-                      <input
-                        type="text"
-                        autoFocus
-                        value={recipientSearchQuery}
-                        onChange={(e) => setRecipientSearchQuery(e.target.value)}
-                        placeholder="Быстрый поиск организации..."
-                        className="w-full pl-8 pr-3 py-1.5 bg-[#0F1115] border border-[#2D3139] rounded-lg text-xs text-[#E0E0E0] placeholder:text-gray-500 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] px-1 text-gray-400">
-                      <span>Найдено: {filteredOrganizations.length}</span>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={handleSelectAllRecipients}
-                          className="hover:text-blue-400 transition-colors cursor-pointer"
-                        >
-                          Выбрать все
-                        </button>
-                        <span>•</span>
-                        <button
-                          type="button"
-                          onClick={handleClearRecipients}
-                          className="hover:text-rose-400 transition-colors cursor-pointer"
-                        >
-                          Снять все
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Список чекбоксов */}
-                  <div className="max-h-52 overflow-y-auto divide-y divide-[#2D3139]/40 p-1">
-                    {filteredOrganizations.length === 0 ? (
-                      <div className="p-4 text-center text-gray-500 text-xs">
-                        Организации не найдены
-                      </div>
-                    ) : (
-                      filteredOrganizations.map((org) => {
-                        const isSelected = recipientIds.includes(org.id);
-                        return (
-                          <div
-                            key={org.id}
-                            onClick={() => toggleRecipient(org.id)}
-                            className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer transition-colors ${
-                              isSelected
-                                ? 'bg-blue-600/15 text-[#E0E0E0] font-medium'
-                                : 'hover:bg-[#2D3139]/40 text-gray-300'
-                            }`}
-                          >
-                            <div className="text-blue-400 shrink-0">
-                              {isSelected ? (
-                                <CheckSquare className="w-4 h-4 text-blue-400" />
-                              ) : (
-                                <Square className="w-4 h-4 text-gray-500" />
-                              )}
-                            </div>
-                            <span className="text-xs select-none truncate">{org.name}</span>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-
-                  <div className="p-2 border-t border-[#2D3139] bg-[#171A21] flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setIsRecipientDropdownOpen(false)}
-                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-                    >
-                      Готово
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 5.2 Множественный выбор: Структурные подразделения для Получателя */}
-            <div className={`min-w-0 w-full relative ${isDeptDropdownOpen ? 'z-40' : 'z-20'}`} ref={deptDropdownRef}>
-              <div className="flex items-center justify-between gap-2 mb-1.5 min-w-0">
-                <label className="font-semibold text-gray-300 flex items-center gap-1 min-w-0 truncate">
-                  <Layers className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                  <span className="truncate">СП для «Получателя» (множественный выбор)</span>
-                </label>
-                {recipientDepartmentIds.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleClearDepartments}
-                    className="text-[11px] text-gray-400 hover:text-rose-400 transition-colors cursor-pointer shrink-0"
-                  >
-                    Очистить ({recipientDepartmentIds.length})
-                  </button>
-                )}
-              </div>
-
-              {/* Триггер выпадающего списка структурных подразделений */}
-              <div className="flex gap-2 min-w-0 w-full items-center">
-                <div
-                  onClick={toggleDeptDropdown}
-                  className={`w-full min-w-0 flex-1 min-h-[42px] px-3 py-2 bg-[#0F1115] border ${
-                    isDeptDropdownOpen ? 'border-blue-500 ring-1 ring-blue-500/30' : 'border-[#2D3139]'
-                  } rounded-xl cursor-pointer flex items-center justify-between gap-2 transition-colors`}
-                >
-                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1 min-w-0 flex-1">
-                    {recipientDepartmentIds.length === 0 ? (
-                      <span className="text-gray-500 select-none truncate">
-                        {recipientIds.length > 0
-                          ? '-- Выберите структурные подразделения получателя --'
-                          : '-- Выберите структурные подразделения (опционально) --'}
-                      </span>
-                    ) : (
-                      departments
-                        .filter((d) => recipientDepartmentIds.includes(d.id))
-                        .map((dept) => (
-                          <span
-                            key={dept.id}
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-600/20 text-indigo-300 border border-indigo-500/40 rounded-lg text-[11px] font-medium max-w-full"
-                          >
-                            <span className="font-semibold text-blue-300 mr-0.5 shrink-0">{dept.shortName}</span>
-                            <span className="truncate max-w-[130px]">({dept.name})</span>
-                            <button
-                              type="button"
-                              onClick={(e) => removeDepartment(dept.id, e)}
-                              className="text-indigo-400 hover:text-rose-400 p-0.5 rounded-md hover:bg-white/10 transition-colors shrink-0"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ))
-                    )}
-                  </div>
-                  <ChevronDown
-                    className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${
-                      isDeptDropdownOpen ? 'rotate-180' : ''
-                    }`}
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={onOpenNewDepartmentModal}
-                  title="Добавить новое структурное подразделение в справочник"
-                  className="p-2.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30 transition-colors cursor-pointer flex items-center justify-center shrink-0"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Выпадающее окно выбора структурных подразделений */}
-              {isDeptDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-[#1F222B] border border-[#2D3139] rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-100">
-                  {/* Поиск и быстрые действия */}
-                  <div className="p-2.5 border-b border-[#2D3139] bg-[#171A21] space-y-2">
-                    <div className="relative">
-                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
-                      <input
-                        type="text"
-                        autoFocus
-                        value={deptSearchQuery}
-                        onChange={(e) => setDeptSearchQuery(e.target.value)}
-                        placeholder="Поиск по названию или аббревиатуре СП..."
-                        className="w-full pl-8 pr-3 py-1.5 bg-[#0F1115] border border-[#2D3139] rounded-lg text-xs text-[#E0E0E0] placeholder:text-gray-500 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] px-1 text-gray-400">
-                      <span>
-                        {recipientIds.length > 0
-                          ? `СП выбранных получателей (${filteredDepartments.length})`
-                          : `Всего подразделений (${filteredDepartments.length})`}
-                      </span>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={handleSelectAllDepartments}
-                          className="hover:text-blue-400 transition-colors cursor-pointer"
-                        >
-                          Выбрать все
-                        </button>
-                        <span>•</span>
-                        <button
-                          type="button"
-                          onClick={handleClearDepartments}
-                          className="hover:text-rose-400 transition-colors cursor-pointer"
-                        >
-                          Снять все
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Список подразделений */}
-                  <div className="max-h-52 overflow-y-auto divide-y divide-[#2D3139]/40 p-1">
-                    {filteredDepartments.length === 0 ? (
-                      <div className="p-4 text-center text-gray-500 text-xs">
-                        {availableDepartments.length === 0
-                          ? 'Для выбранных получателей нет структурных подразделений в справочнике'
-                          : 'Структурные подразделения не найдены'}
-                      </div>
-                    ) : (
-                      filteredDepartments.map((dept) => {
-                        const isSelected = recipientDepartmentIds.includes(dept.id);
-                        return (
-                          <div
-                            key={dept.id}
-                            onClick={() => toggleDepartment(dept.id)}
-                            className={`flex items-center justify-between gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer transition-colors ${
-                              isSelected
-                                ? 'bg-indigo-600/20 text-[#E0E0E0] font-medium'
-                                : 'hover:bg-[#2D3139]/40 text-gray-300'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 overflow-hidden min-w-0">
-                              <div className="text-blue-400 shrink-0">
-                                {isSelected ? (
-                                  <CheckSquare className="w-4 h-4 text-indigo-400" />
-                                ) : (
-                                  <Square className="w-4 h-4 text-gray-500" />
-                                )}
-                              </div>
-                              <span className="font-mono text-blue-300 px-1.5 py-0.5 rounded bg-blue-950/60 text-[10px] font-bold border border-blue-800/40 shrink-0">
-                                {dept.shortName}
-                              </span>
-                              <span className="text-xs truncate select-none">{dept.name}</span>
-                            </div>
-                            {dept.organizationName && (
-                              <span className="text-[10px] text-gray-400 shrink-0 bg-[#0F1115] px-1.5 py-0.5 rounded border border-[#2D3139] truncate max-w-[140px]">
-                                {dept.organizationName}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-
-                  <div className="p-2 border-t border-[#2D3139] bg-[#171A21] flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setIsDeptDropdownOpen(false)}
-                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-                    >
-                      Готово
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* 5.2 Множественный выбор: Структурные подразделения для Получателя с прямым поиском с клавиатуры */}
+            <SearchableMultiSelect
+              id="recipient-depts-multiselect"
+              label="СП для «Получателя» (множественный выбор)"
+              icon={<Layers className="w-3.5 h-3.5 text-indigo-400 shrink-0" />}
+              options={recipientDeptOptions}
+              selectedIds={recipientDepartmentIds}
+              onChange={setRecipientDepartmentIds}
+              placeholder="-- Введите название или аббревиатуру СП --"
+              emptyMessage={
+                availableDepartments.length === 0
+                  ? 'Для выбранных получателей нет СП в справочнике'
+                  : 'Подразделения не найдены'
+              }
+              onAddNew={onOpenNewDepartmentModal}
+              addNewTitle="Добавить структурное подразделение в справочник"
+              chipColor="indigo"
+            />
           </div>
 
           {/* 6. Путь к файлу/папке и ссылка на СЭД с иконкой вставки из буфера обмена */}
