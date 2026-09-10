@@ -165,10 +165,76 @@ class SQLiteDatabaseManager {
   }
 
   /**
+   * Захватывает распределенную межпроцессную блокировку на сетевом диске
+   * с защитой от зависших блокировок (stale lock threshold)
+   */
+  private async acquireDistributedLock(timeoutMs = 30000): Promise<() => void> {
+    if (!this.currentDbPath) return () => {};
+    const lockFilePath = `${this.currentDbPath}.netlock`;
+    const startTime = Date.now();
+    const staleLockThresholdMs = 12000; // 12 секунд макс на операцию, иначе блокировка считается зависшей
+
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        // Атомарное создание файла с флагами 'wx' (O_CREAT | O_EXCL)
+        const fd = fs.openSync(lockFilePath, 'wx');
+        try {
+          const lockInfo = JSON.stringify({
+            pid: process.pid,
+            time: Date.now(),
+            host: os.hostname(),
+          });
+          fs.writeFileSync(fd, lockInfo, 'utf8');
+        } finally {
+          try { fs.closeSync(fd); } catch {}
+        }
+
+        // Функция освобождения
+        return () => {
+          try {
+            if (fs.existsSync(lockFilePath)) {
+              fs.unlinkSync(lockFilePath);
+            }
+          } catch {}
+        };
+      } catch (err: any) {
+        if (err.code === 'EEXIST') {
+          // Файл уже существует. Проверяем возраст
+          try {
+            const stat = fs.statSync(lockFilePath);
+            const age = Date.now() - stat.mtimeMs;
+            if (age > staleLockThresholdMs) {
+              logger.log('warn', 'db', `Обнаружен зависший lock-файл (${Math.round(age / 1000)}с), принудительно снимаем: ${lockFilePath}`);
+              try {
+                fs.unlinkSync(lockFilePath);
+              } catch {}
+              continue;
+            }
+          } catch {}
+
+          const waitTime = Math.floor(50 + Math.random() * 100);
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
+        } else {
+          // Если файловая система шары не поддерживает lock-файл, логируем и продолжаем
+          return () => {};
+        }
+      }
+    }
+
+    // Если таймаут истек, пытаемся сбросить
+    try {
+      if (fs.existsSync(lockFilePath)) {
+        fs.unlinkSync(lockFilePath);
+      }
+    } catch {}
+    return () => {};
+  }
+
+  /**
    * Выполняет операцию SQLite с механизмом повторных попыток
    * при обнаружении временных сетевых блокировок (SQLITE_BUSY / database is locked)
    */
-  private async runWithRetry<T>(operation: () => T, maxRetries = 12, baseDelayMs = 100): Promise<T> {
+  private async runWithRetry<T>(operation: () => T, maxRetries = 15, baseDelayMs = 120): Promise<T> {
     let lastError: any = null;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
@@ -180,7 +246,8 @@ class SQLiteDatabaseManager {
           msg.includes('database is locked') ||
           msg.includes('SQLITE_BUSY') ||
           msg.includes('busy') ||
-          msg.includes('cannot start a transaction');
+          msg.includes('cannot start a transaction') ||
+          msg.includes('SQLITE_LOCKED');
 
         if (!isLocked || attempt === maxRetries - 1) {
           throw err;
@@ -194,7 +261,7 @@ class SQLiteDatabaseManager {
         }
 
         // Экспоненциальный бэкофф со случайным джиттером для разведения одновременных сетевых клиентов
-        const delay = Math.round(baseDelayMs * Math.pow(1.3, attempt) + Math.random() * 90);
+        const delay = Math.round(baseDelayMs * Math.pow(1.25, attempt) + Math.random() * 120);
         logger.log(
           'warn',
           'db',
@@ -209,26 +276,51 @@ class SQLiteDatabaseManager {
   /**
    * Безопасное выполнение операций записи в SQLite:
    * 1. Вся очередь записи сериализуется в процессе через writeQueue.
-   * 2. Выполняется прямое атомарное выполнение оператора в режиме autocommit (или пользовательской транзакции).
-   * 3. При временной блокировке сетевого файла (SQLITE_BUSY / database is locked)
+   * 2. Захватывается распределенная межпроцессная блокировка на сетевом носителе (.netlock).
+   * 3. Операция выполняется внутри транзакции BEGIN IMMEDIATE (через db.transaction().immediate),
+   *    что гарантирует захват блокировки записи СРАЗУ, полностью исключая сбой lock promotion (SHARED -> EXCLUSIVE)
+   *    в ядре Linux cifs.ko на Astra Linux 1.7.
+   * 4. При временной блокировке сетевого файла (SQLITE_BUSY / database is locked)
    *    производится серия повторных попыток с экспоненциальным бэкоффом (runWithRetry).
-   * 4. Отказ от искусственного 'BEGIN IMMEDIATE' на уровне JavaScript исключает сбои
-   *    POSIX fcntl lock promotion на файловых системах CIFS/SMB в Astra Linux 1.7.
    */
   private runWriteTransaction<T>(operation: () => T): Promise<T> {
     const task = async (): Promise<T> => {
-      return this.runWithRetry(() => {
-        if (!this.db || !this.db.open) throw new Error('БД не подключена');
+      if (!this.db || !this.db.open) throw new Error('БД не подключена');
 
-        // Страховка от предшествующих незакрытых транзакций
-        if (this.db.inTransaction) {
-          try {
-            this.db.exec('ROLLBACK;');
-          } catch {}
-        }
+      const releaseLock = await this.acquireDistributedLock(30000);
 
-        return operation();
-      });
+      try {
+        return await this.runWithRetry(() => {
+          if (!this.db || !this.db.open) throw new Error('БД не подключена');
+
+          // Страховка от предшествующих незакрытых транзакций
+          if (this.db.inTransaction) {
+            try {
+              this.db.exec('ROLLBACK;');
+            } catch {}
+          }
+
+          let result: T;
+          if (typeof this.db.transaction === 'function') {
+            const tx = this.db.transaction(() => {
+              return operation();
+            });
+            result = tx.immediate();
+          } else {
+            this.db.exec('BEGIN IMMEDIATE;');
+            try {
+              result = operation();
+              this.db.exec('COMMIT;');
+            } catch (opErr) {
+              try { this.db.exec('ROLLBACK;'); } catch {}
+              throw opErr;
+            }
+          }
+          return result;
+        }, 15, 120);
+      } finally {
+        releaseLock();
+      }
     };
 
     const result = this.writeQueue.then(task, task);
@@ -294,10 +386,14 @@ class SQLiteDatabaseManager {
         try {
           const r = getRequire();
           if (r) {
-            DatabaseConstructor = r('better-sqlite3');
+            const Candidate = r('better-sqlite3');
+            // Проверяем возможность инстанцирования в текущем рантайме (проверка ABI Node.js / Electron)
+            const probe = new Candidate(':memory:');
+            probe.close();
+            DatabaseConstructor = Candidate;
           }
-        } catch (e) {
-          logger.log('warn', 'db', 'better-sqlite3 не загружен в dev-режиме, используется mock-режим');
+        } catch (e: any) {
+          logger.log('warn', 'db', `better-sqlite3 недоступен в текущем рантайме (${e?.message || 'ошибка'}), используется mock-режим`);
           this.currentDbPath = dbPath;
           return { success: true, message: 'БД подключена (mock)' };
         }
@@ -333,7 +429,7 @@ class SQLiteDatabaseManager {
         try {
           const tempDb = new DatabaseConstructor(tempFile, { timeout: 10000 });
           try {
-            tempDb.pragma('journal_mode = TRUNCATE');
+            tempDb.pragma('journal_mode = MEMORY');
             tempDb.pragma('synchronous = NORMAL');
             tempDb.pragma('foreign_keys = ON');
             tempDb.pragma('temp_store = MEMORY');
@@ -360,7 +456,7 @@ class SQLiteDatabaseManager {
             logger.log('warn', 'db', `Не удалось скопировать временный файл (${copyErr.message}), выполняем прямую инициализацию на носителе...`);
             const directDb = new DatabaseConstructor(dbPath, { timeout: effectiveTimeout });
             try {
-              directDb.pragma('journal_mode = TRUNCATE');
+              directDb.pragma('journal_mode = MEMORY');
               directDb.pragma('synchronous = NORMAL');
               directDb.pragma('foreign_keys = ON');
               directDb.pragma('temp_store = MEMORY');
@@ -378,17 +474,29 @@ class SQLiteDatabaseManager {
         }
       }
 
+      // Очистка зависших журналов предыдущих аварийно завершенных процессов на сетевой шаре
+      const staleJournal = `${dbPath}-journal`;
+      if (fs.existsSync(staleJournal)) {
+        try {
+          const st = fs.statSync(staleJournal);
+          if (st.size === 0 || Date.now() - st.mtimeMs > 15000) {
+            logger.log('warn', 'db', `Очистка неактивного файла журнала: ${staleJournal}`);
+            fs.unlinkSync(staleJournal);
+          }
+        } catch {}
+      }
+
       // Открываем сетевую базу данных с настроенным timeout ожидания блокировок
       this.db = new DatabaseConstructor(dbPath, {
-        timeout: effectiveTimeout,
+        timeout: Math.max(effectiveTimeout, 30000),
         verbose: (msg: string) => {
           if (process.env.DEBUG_SQL) console.log(`[SQL]: ${msg}`);
         },
       });
 
-      // 1. Устанавливаем busy_timeout для 6-10 одновременных сетевых пользователей (10000+ мс)
+      // 1. Устанавливаем busy_timeout для 6-10 одновременных сетевых пользователей (30000+ мс)
       try {
-        this.db.pragma(`busy_timeout = ${effectiveTimeout}`);
+        this.db.pragma(`busy_timeout = ${Math.max(effectiveTimeout, 30000)}`);
       } catch {}
 
       // 2. synchronous = NORMAL для стабильного сетевого I/O
@@ -406,9 +514,9 @@ class SQLiteDatabaseManager {
         this.db.pragma('temp_store = MEMORY');
       } catch {}
 
-      // 5. cache_size = -64000 (64MB памяти под кэш страниц SQLite)
+      // 5. cache_size = -32000 (32MB памяти под кэш страниц SQLite)
       try {
-        this.db.pragma('cache_size = -64000');
+        this.db.pragma('cache_size = -32000');
       } catch {}
 
       // 6. locking_mode = NORMAL (своевременное снятие блокировок после коммита транзакций)
@@ -416,9 +524,13 @@ class SQLiteDatabaseManager {
         this.db.pragma('locking_mode = NORMAL');
       } catch {}
 
-      // 7. journal_mode = TRUNCATE (для сетевых файловых систем CIFS/SMB предотвращает постоянное создание/удаление файла .sqlite-journal, исключая коллизии POSIX-блокировок)
+      // 7. journal_mode = MEMORY
+      // КРИТИЧНО ДЛЯ ASTRA LINUX 1.7 И СЕТЕВЫХ ШАР CIFS/SMB:
+      // В режиме MEMORY журнал отката транзакций хранится в оперативной памяти процесса.
+      // На сетевой файловой системе CIFS не создается файл *.sqlite-journal, не выполняется
+      // ftruncate(0) и исключаются коллизии блокировок дескрипторов (database is locked).
       try {
-        this.db.pragma('journal_mode = TRUNCATE');
+        this.db.pragma('journal_mode = MEMORY');
       } catch (journalErr: any) {
         logger.log('warn', 'db', `Предупреждение journal_mode: ${journalErr.message}`);
       }
@@ -431,7 +543,7 @@ class SQLiteDatabaseManager {
       // Проверяем схему и наличие колонок (без конфликтов блокировок)
       await this.ensureSchema();
 
-      logger.log('info', 'db', `Подключение к БД успешно установлено (busy_timeout=${effectiveTimeout}ms, journal_mode=TRUNCATE, sync=NORMAL)`);
+      logger.log('info', 'db', `Подключение к БД успешно установлено (busy_timeout=${Math.max(effectiveTimeout, 30000)}ms, journal_mode=MEMORY, sync=NORMAL)`);
       return { success: true, message: 'База данных успешно подключена и инициализирована' };
     } catch (err: any) {
       logger.log('error', 'db', `Ошибка подключения к SQLite: ${err.message}`, err);
@@ -628,31 +740,29 @@ class SQLiteDatabaseManager {
   }
 
   public async saveOrganization(org: Omit<Organization, 'id'> & { id?: number }): Promise<Organization> {
-    let targetId: number;
-    if (org.id) {
-      await this.runWriteTransaction(() => {
+    return await this.runWriteTransaction(() => {
+      let targetId: number;
+      if (org.id) {
         this.db.prepare('UPDATE organizations SET name = ?, director = ?, email = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
           .run(org.name, org.director || '', org.email || '', org.id);
-      });
-      targetId = org.id;
-    } else {
-      targetId = await this.runWriteTransaction(() => {
+        targetId = org.id;
+      } else {
         const info = this.db.prepare('INSERT INTO organizations (name, director, email) VALUES (?, ?, ?)')
           .run(org.name, org.director || '', org.email || '');
-        return Number(info.lastInsertRowid);
-      });
-    }
+        targetId = Number(info.lastInsertRowid);
+      }
 
-    const row = this.db.prepare('SELECT id, name, director, email, created_at as createdAt, updated_at as updatedAt FROM organizations WHERE id = ?').get(targetId) as Organization;
-    if (!row) throw new Error('Не удалось прочитать сохраненную организацию');
-    return row;
+      const row = this.db.prepare('SELECT id, name, director, email, created_at as createdAt, updated_at as updatedAt FROM organizations WHERE id = ?').get(targetId) as Organization;
+      if (!row) throw new Error('Не удалось прочитать сохраненную организацию');
+      return row;
+    });
   }
 
   public async deleteOrganization(id: number): Promise<{ success: boolean }> {
-    await this.runWriteTransaction(() => {
+    return await this.runWriteTransaction(() => {
       this.db.prepare('DELETE FROM organizations WHERE id = ?').run(id);
+      return { success: true };
     });
-    return { success: true };
   }
 
   // --- CRUD Структурные подразделения ---
@@ -668,37 +778,35 @@ class SQLiteDatabaseManager {
   }
 
   public async saveDepartment(dept: Omit<Department, 'id'> & { id?: number }): Promise<Department> {
-    let targetId: number;
-    if (dept.id) {
-      await this.runWriteTransaction(() => {
+    return await this.runWriteTransaction(() => {
+      let targetId: number;
+      if (dept.id) {
         this.db.prepare('UPDATE departments SET name = ?, short_name = ?, organization_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
           .run(dept.name, dept.shortName, dept.organizationId, dept.id);
-      });
-      targetId = dept.id;
-    } else {
-      targetId = await this.runWriteTransaction(() => {
+        targetId = dept.id;
+      } else {
         const info = this.db.prepare('INSERT INTO departments (name, short_name, organization_id) VALUES (?, ?, ?)')
           .run(dept.name, dept.shortName, dept.organizationId);
-        return Number(info.lastInsertRowid);
-      });
-    }
+        targetId = Number(info.lastInsertRowid);
+      }
 
-    const row = this.db.prepare(`
-      SELECT d.id, d.name, d.short_name as shortName, d.organization_id as organizationId, 
-             o.name as organizationName, d.created_at as createdAt, d.updated_at as updatedAt
-      FROM departments d
-      LEFT JOIN organizations o ON d.organization_id = o.id
-      WHERE d.id = ?
-    `).get(targetId) as Department;
-    if (!row) throw new Error('Не удалось прочитать сохраненное подразделение');
-    return row;
+      const row = this.db.prepare(`
+        SELECT d.id, d.name, d.short_name as shortName, d.organization_id as organizationId, 
+               o.name as organizationName, d.created_at as createdAt, d.updated_at as updatedAt
+        FROM departments d
+        LEFT JOIN organizations o ON d.organization_id = o.id
+        WHERE d.id = ?
+      `).get(targetId) as Department;
+      if (!row) throw new Error('Не удалось прочитать сохраненное подразделение');
+      return row;
+    });
   }
 
   public async deleteDepartment(id: number): Promise<{ success: boolean }> {
-    await this.runWriteTransaction(() => {
+    return await this.runWriteTransaction(() => {
       this.db.prepare('DELETE FROM departments WHERE id = ?').run(id);
+      return { success: true };
     });
-    return { success: true };
   }
 
   // --- CRUD Сотрудники ---
@@ -715,38 +823,36 @@ class SQLiteDatabaseManager {
   }
 
   public async saveEmployee(emp: Omit<Employee, 'id'> & { id?: number }): Promise<Employee> {
-    let targetId: number;
-    if (emp.id) {
-      await this.runWriteTransaction(() => {
+    return await this.runWriteTransaction(() => {
+      let targetId: number;
+      if (emp.id) {
         this.db.prepare('UPDATE employees SET full_name = ?, position = ?, department_short_name = ?, organization_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
           .run(emp.fullName, emp.position || '', emp.departmentShortName, emp.organizationId, emp.id);
-      });
-      targetId = emp.id;
-    } else {
-      targetId = await this.runWriteTransaction(() => {
+        targetId = emp.id;
+      } else {
         const info = this.db.prepare('INSERT INTO employees (full_name, position, department_short_name, organization_id) VALUES (?, ?, ?, ?)')
           .run(emp.fullName, emp.position || '', emp.departmentShortName, emp.organizationId);
-        return Number(info.lastInsertRowid);
-      });
-    }
+        targetId = Number(info.lastInsertRowid);
+      }
 
-    const row = this.db.prepare(`
-      SELECT e.id, e.full_name as fullName, e.position as position, 
-             e.department_short_name as departmentShortName, e.organization_id as organizationId, 
-             o.name as organizationName, e.created_at as createdAt, e.updated_at as updatedAt
-      FROM employees e
-      LEFT JOIN organizations o ON e.organization_id = o.id
-      WHERE e.id = ?
-    `).get(targetId) as Employee;
-    if (!row) throw new Error('Не удалось прочитать сохраненного сотрудника');
-    return row;
+      const row = this.db.prepare(`
+        SELECT e.id, e.full_name as fullName, e.position as position, 
+               e.department_short_name as departmentShortName, e.organization_id as organizationId, 
+               o.name as organizationName, e.created_at as createdAt, e.updated_at as updatedAt
+        FROM employees e
+        LEFT JOIN organizations o ON e.organization_id = o.id
+        WHERE e.id = ?
+      `).get(targetId) as Employee;
+      if (!row) throw new Error('Не удалось прочитать сохраненного сотрудника');
+      return row;
+    });
   }
 
   public async deleteEmployee(id: number): Promise<{ success: boolean }> {
-    await this.runWriteTransaction(() => {
+    return await this.runWriteTransaction(() => {
       this.db.prepare('DELETE FROM employees WHERE id = ?').run(id);
+      return { success: true };
     });
-    return { success: true };
   }
 
   // --- CRUD Тип документа ---
@@ -756,29 +862,27 @@ class SQLiteDatabaseManager {
   }
 
   public async saveDocumentType(type: Omit<DocumentType, 'id'> & { id?: number }): Promise<DocumentType> {
-    let targetId: number;
-    if (type.id) {
-      await this.runWriteTransaction(() => {
+    return await this.runWriteTransaction(() => {
+      let targetId: number;
+      if (type.id) {
         this.db.prepare('UPDATE doc_types SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(type.name, type.id);
-      });
-      targetId = type.id;
-    } else {
-      targetId = await this.runWriteTransaction(() => {
+        targetId = type.id;
+      } else {
         const info = this.db.prepare('INSERT INTO doc_types (name) VALUES (?)').run(type.name);
-        return Number(info.lastInsertRowid);
-      });
-    }
+        targetId = Number(info.lastInsertRowid);
+      }
 
-    const row = this.db.prepare('SELECT id, name, created_at as createdAt, updated_at as updatedAt FROM doc_types WHERE id = ?').get(targetId) as DocumentType;
-    if (!row) throw new Error('Не удалось прочитать сохраненный тип документа');
-    return row;
+      const row = this.db.prepare('SELECT id, name, created_at as createdAt, updated_at as updatedAt FROM doc_types WHERE id = ?').get(targetId) as DocumentType;
+      if (!row) throw new Error('Не удалось прочитать сохраненный тип документа');
+      return row;
+    });
   }
 
   public async deleteDocumentType(id: number): Promise<{ success: boolean }> {
-    await this.runWriteTransaction(() => {
+    return await this.runWriteTransaction(() => {
       this.db.prepare('DELETE FROM doc_types WHERE id = ?').run(id);
+      return { success: true };
     });
-    return { success: true };
   }
 
   // --- CRUD Направления ---
@@ -788,29 +892,27 @@ class SQLiteDatabaseManager {
   }
 
   public async saveDirection(dir: Omit<Direction, 'id'> & { id?: number }): Promise<Direction> {
-    let targetId: number;
-    if (dir.id) {
-      await this.runWriteTransaction(() => {
+    return await this.runWriteTransaction(() => {
+      let targetId: number;
+      if (dir.id) {
         this.db.prepare('UPDATE directions SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(dir.name, dir.id);
-      });
-      targetId = dir.id;
-    } else {
-      targetId = await this.runWriteTransaction(() => {
+        targetId = dir.id;
+      } else {
         const info = this.db.prepare('INSERT INTO directions (name) VALUES (?)').run(dir.name);
-        return Number(info.lastInsertRowid);
-      });
-    }
+        targetId = Number(info.lastInsertRowid);
+      }
 
-    const row = this.db.prepare('SELECT id, name, created_at as createdAt, updated_at as updatedAt FROM directions WHERE id = ?').get(targetId) as Direction;
-    if (!row) throw new Error('Не удалось прочитать сохраненное направление');
-    return row;
+      const row = this.db.prepare('SELECT id, name, created_at as createdAt, updated_at as updatedAt FROM directions WHERE id = ?').get(targetId) as Direction;
+      if (!row) throw new Error('Не удалось прочитать сохраненное направление');
+      return row;
+    });
   }
 
   public async deleteDirection(id: number): Promise<{ success: boolean }> {
-    await this.runWriteTransaction(() => {
+    return await this.runWriteTransaction(() => {
       this.db.prepare('DELETE FROM directions WHERE id = ?').run(id);
+      return { success: true };
     });
-    return { success: true };
   }
 
   // --- Количество документов (быстрый подсчет без чтения всех строк) ---
@@ -976,10 +1078,10 @@ class SQLiteDatabaseManager {
       : null;
     const recipientDeptNames = doc.recipientDepartmentNames || null;
 
-    let targetId: number;
+    return await this.runWriteTransaction(() => {
+      let targetId: number;
 
-    if (doc.id) {
-      await this.runWriteTransaction(() => {
+      if (doc.id) {
         this.db.prepare(`
           UPDATE documents SET 
             doc_type_id = ?, direction_id = ?, outgoing_number = ?, outgoing_date = ?,
@@ -999,10 +1101,8 @@ class SQLiteDatabaseManager {
           doc.filePath || null, doc.sedUrl || null, doc.comments || null,
           doc.id
         );
-      });
-      targetId = doc.id;
-    } else {
-      targetId = await this.runWriteTransaction(() => {
+        targetId = doc.id;
+      } else {
         const info = this.db.prepare(`
           INSERT INTO documents (
             doc_type_id, direction_id, outgoing_number, outgoing_date,
@@ -1021,20 +1121,20 @@ class SQLiteDatabaseManager {
           primaryRecipientId, recipientIdsJson, recipientDeptIdsJson, recipientDeptNames,
           doc.filePath || null, doc.sedUrl || null, doc.comments || null
         );
-        return Number(info.lastInsertRowid);
-      });
-    }
+        targetId = Number(info.lastInsertRowid);
+      }
 
-    const saved = this.getDocumentById(targetId);
-    if (!saved) throw new Error('Не удалось прочитать сохраненный документ');
-    return saved;
+      const saved = this.getDocumentById(targetId);
+      if (!saved) throw new Error('Не удалось прочитать сохраненный документ');
+      return saved;
+    });
   }
 
   public async deleteDocument(id: number): Promise<{ success: boolean }> {
-    await this.runWriteTransaction(() => {
+    return await this.runWriteTransaction(() => {
       this.db.prepare('DELETE FROM documents WHERE id = ?').run(id);
+      return { success: true };
     });
-    return { success: true };
   }
 
   public getCurrentDbPath(): string {
