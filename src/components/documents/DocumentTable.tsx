@@ -15,6 +15,11 @@ import {
   ChevronsLeft,
   ChevronsRight,
   AlertTriangle,
+  Maximize2,
+  Minimize2,
+  RotateCcw,
+  GripHorizontal,
+  MoveDiagonal,
 } from 'lucide-react';
 import { DocumentRecord } from '../../types';
 import { formatDateRussian } from '../../utils/date';
@@ -124,6 +129,134 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
     document.removeEventListener('mouseup', handleMouseUp);
   };
 
+  // Масштабирование границ окна таблицы мышкой (Window Border Resizing)
+  const DEFAULT_TABLE_HEIGHT = 540;
+  const [tableHeight, setTableHeight] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('docflow_table_height');
+      if (saved) {
+        const val = Number(saved);
+        if (!isNaN(val) && val >= 240 && val <= 2500) return val;
+      }
+    } catch {}
+    return DEFAULT_TABLE_HEIGHT;
+  });
+
+  const [tableWidth, setTableWidth] = useState<number | null>(() => {
+    try {
+      const saved = localStorage.getItem('docflow_table_width');
+      if (saved) {
+        const val = Number(saved);
+        if (!isNaN(val) && val >= 600 && val <= 3500) return val;
+      }
+    } catch {}
+    return null;
+  });
+
+  const [isMaximized, setIsMaximized] = useState(false);
+  const [isResizingTable, setIsResizingTable] = useState<'bottom' | 'right' | 'corner' | null>(null);
+  const [liveDimensions, setLiveDimensions] = useState<{ width: number; height: number } | null>(null);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const resizingTable = useRef<{
+    edge: 'bottom' | 'right' | 'corner';
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startHeight: number;
+  } | null>(null);
+
+  const startResizingTable = (edge: 'bottom' | 'right' | 'corner', e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isMaximized || !containerRef.current) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    resizingTable.current = {
+      edge,
+      startX: e.clientX,
+      startY: e.clientY,
+      startWidth: rect.width,
+      startHeight: rect.height,
+    };
+    setIsResizingTable(edge);
+    setLiveDimensions({ width: Math.round(rect.width), height: Math.round(rect.height) });
+
+    const handleTableMouseMove = (moveEvent: MouseEvent) => {
+      if (!resizingTable.current) return;
+      const { edge: currentEdge, startX, startY, startWidth, startHeight } = resizingTable.current;
+
+      let newHeight = startHeight;
+      let newWidth = startWidth;
+
+      if (currentEdge === 'bottom' || currentEdge === 'corner') {
+        const deltaY = moveEvent.clientY - startY;
+        newHeight = Math.max(260, Math.min(window.innerHeight - 60, startHeight + deltaY));
+        setTableHeight(newHeight);
+        try {
+          localStorage.setItem('docflow_table_height', String(Math.round(newHeight)));
+        } catch {}
+      }
+
+      if (currentEdge === 'right' || currentEdge === 'corner') {
+        const deltaX = moveEvent.clientX - startX;
+        newWidth = Math.max(650, Math.min(window.innerWidth - 32, startWidth + deltaX));
+        setTableWidth(newWidth);
+        try {
+          localStorage.setItem('docflow_table_width', String(Math.round(newWidth)));
+        } catch {}
+      }
+
+      setLiveDimensions({ width: Math.round(newWidth), height: Math.round(newHeight) });
+    };
+
+    const handleTableMouseUp = () => {
+      resizingTable.current = null;
+      setIsResizingTable(null);
+      setLiveDimensions(null);
+      document.removeEventListener('mousemove', handleTableMouseMove);
+      document.removeEventListener('mouseup', handleTableMouseUp);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+
+    document.body.style.userSelect = 'none';
+    if (edge === 'bottom') document.body.style.cursor = 'row-resize';
+    else if (edge === 'right') document.body.style.cursor = 'col-resize';
+    else if (edge === 'corner') document.body.style.cursor = 'se-resize';
+
+    document.addEventListener('mousemove', handleTableMouseMove);
+    document.addEventListener('mouseup', handleTableMouseUp);
+  };
+
+  const resetTableDimensions = () => {
+    setTableHeight(DEFAULT_TABLE_HEIGHT);
+    setTableWidth(null);
+    setIsMaximized(false);
+    try {
+      localStorage.removeItem('docflow_table_height');
+      localStorage.removeItem('docflow_table_width');
+    } catch {}
+  };
+
+  const setHeightPreset = (h: number) => {
+    setIsMaximized(false);
+    setTableHeight(h);
+    try {
+      localStorage.setItem('docflow_table_height', String(h));
+    } catch {}
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isMaximized) {
+        setIsMaximized(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isMaximized]);
+
   // Сортировка данных
   const sortedDocuments = [...documents].sort((a, b) => {
     let aVal = (a as any)[sortField] ?? '';
@@ -197,13 +330,135 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
   };
 
   return (
-    <div className="bg-[#171A21] rounded-2xl border border-[#2D3139] shadow-xl flex flex-col overflow-hidden text-[#E0E0E0]">
-      
-      {/* Контейнер таблицы с горизонтальным скроллом */}
-      <div className="overflow-x-auto min-h-[350px]">
-        <table className="w-full text-left border-collapse text-xs select-none" style={{ tableLayout: 'fixed' }}>
-          <thead>
-            <tr className="border-b border-[#2D3139] bg-[#1F222B] text-gray-400 font-semibold uppercase tracking-wider">
+    <>
+      {isMaximized && (
+        <div
+          className="fixed inset-0 z-45 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setIsMaximized(false)}
+        />
+      )}
+
+      <div
+        ref={containerRef}
+        style={
+          isMaximized
+            ? undefined
+            : {
+                height: `${tableHeight}px`,
+                width: tableWidth ? `${tableWidth}px` : undefined,
+                maxWidth: '100%',
+              }
+        }
+        className={`${
+          isMaximized
+            ? 'fixed inset-2 sm:inset-4 z-50 rounded-2xl shadow-2xl border border-blue-500/50'
+            : 'relative rounded-2xl shadow-xl border border-[#2D3139]'
+        } bg-[#171A21] flex flex-col overflow-hidden text-[#E0E0E0] transition-all`}
+      >
+        {/* Шапка окна таблицы документов: заголовок, статистика и управление масштабированием */}
+        <div
+          onDoubleClick={() => setIsMaximized((prev) => !prev)}
+          title="Двойной клик разворачивает окно таблицы на весь экран или восстанавливает исходный размер"
+          className="px-4 py-2.5 bg-[#12151B]/80 border-b border-[#2D3139] flex flex-wrap items-center justify-between gap-2 shrink-0 select-none cursor-default"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-blue-950/70 border border-blue-800/50 text-blue-400 flex items-center justify-center shrink-0">
+              <FileText className="w-3.5 h-3.5" />
+            </div>
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="text-xs font-bold text-[#E0E0E0] tracking-wide uppercase truncate">
+                Перечень зарегистрированных документов
+              </h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-blue-950/80 text-blue-400 border border-blue-800/40 shrink-0">
+                {documents.length}
+              </span>
+            </div>
+          </div>
+
+          {/* Элементы управления масштабированием и размером окна таблицы */}
+          <div className="flex items-center gap-1.5 text-xs text-gray-400 shrink-0">
+            {/* Индикатор текущего размера */}
+            <span
+              className="text-[11px] font-mono text-gray-400 px-2 py-0.5 rounded bg-[#0F1115] border border-[#2D3139]"
+              title="Текущая высота окна таблицы (можно изменять мышкой, потянув за нижнюю границу)"
+            >
+              {isMaximized ? 'Во весь экран' : `${Math.round(tableHeight)} px`}
+            </span>
+
+            {/* Быстрые пресеты высоты */}
+            {!isMaximized && (
+              <div className="hidden sm:flex items-center gap-1 bg-[#0F1115] p-0.5 rounded-lg border border-[#2D3139]">
+                <button
+                  type="button"
+                  onClick={() => setHeightPreset(380)}
+                  title="Компактная высота (380px)"
+                  className={`px-2 py-0.5 rounded text-[11px] transition-colors cursor-pointer ${
+                    Math.round(tableHeight) === 380 ? 'bg-blue-600 text-white font-medium' : 'hover:text-[#E0E0E0]'
+                  }`}
+                >
+                  380
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHeightPreset(540)}
+                  title="Стандартная высота (540px)"
+                  className={`px-2 py-0.5 rounded text-[11px] transition-colors cursor-pointer ${
+                    Math.round(tableHeight) === 540 ? 'bg-blue-600 text-white font-medium' : 'hover:text-[#E0E0E0]'
+                  }`}
+                >
+                  540
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHeightPreset(750)}
+                  title="Высокая таблица (750px)"
+                  className={`px-2 py-0.5 rounded text-[11px] transition-colors cursor-pointer ${
+                    Math.round(tableHeight) === 750 ? 'bg-blue-600 text-white font-medium' : 'hover:text-[#E0E0E0]'
+                  }`}
+                >
+                  750
+                </button>
+              </div>
+            )}
+
+            {/* Сброс размера */}
+            <button
+              type="button"
+              onClick={resetTableDimensions}
+              title="Сбросить размеры окна таблицы к стандартным"
+              className="p-1.5 text-gray-400 hover:text-white hover:bg-[#1F222B] rounded-lg transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Развернуть / Восстановить */}
+            <button
+              type="button"
+              onClick={() => setIsMaximized((prev) => !prev)}
+              title={isMaximized ? 'Восстановить исходный размер' : 'Развернуть окно таблицы на весь экран'}
+              className="p-1.5 text-gray-400 hover:text-white hover:bg-[#1F222B] rounded-lg transition-colors cursor-pointer"
+            >
+              {isMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Правая граница: масштабирование ширины окна таблицы мышкой */}
+        {!isMaximized && (
+          <div
+            onMouseDown={(e) => startResizingTable('right', e)}
+            className="absolute top-0 right-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500/50 transition-colors z-30 group"
+            title="Потяните правую границу для изменения ширины окна таблицы"
+          >
+            <div className="w-0.5 h-full mx-auto group-hover:bg-blue-500" />
+          </div>
+        )}
+
+        {/* Контейнер таблицы с горизонтальным и вертикальным скроллом */}
+        <div className="overflow-auto flex-1 min-h-[160px]">
+          <table className="w-full text-left border-collapse text-xs select-none" style={{ tableLayout: 'fixed' }}>
+            <thead className="sticky top-0 z-20 bg-[#1F222B] shadow-xs">
+              <tr className="border-b border-[#2D3139] bg-[#1F222B] text-gray-400 font-semibold uppercase tracking-wider">
               
               {/* ID */}
               <th
@@ -683,6 +938,36 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
         </div>
       </div>
 
+      {/* Нижняя граница: удобная планка масштабирования высоты окна таблицы мышкой */}
+      {!isMaximized && (
+        <div
+          onMouseDown={(e) => startResizingTable('bottom', e)}
+          onDoubleClick={() => setIsMaximized(true)}
+          title="Потяните для изменения высоты окна таблицы мышкой (двойной клик — во весь экран)"
+          className="h-3.5 w-full bg-[#12151B] hover:bg-blue-950/70 border-t border-[#2D3139] flex items-center justify-center cursor-row-resize transition-all select-none group shrink-0 relative"
+        >
+          <div className="w-28 h-1 rounded-full bg-[#2D3139] group-hover:bg-blue-500 transition-colors flex items-center justify-center">
+            <GripHorizontal className="w-4 h-4 text-gray-500 group-hover:text-blue-300 transition-colors" />
+          </div>
+
+          {/* Угловой маркер масштабирования в правом нижнем углу */}
+          <div
+            onMouseDown={(e) => startResizingTable('corner', e)}
+            title="Потяните угол для одновременного изменения ширины и высоты окна таблицы"
+            className="absolute right-0 bottom-0 top-0 w-7 flex items-center justify-center cursor-se-resize text-gray-500 hover:text-blue-400 group/corner"
+          >
+            <MoveDiagonal className="w-3.5 h-3.5 group-hover/corner:scale-110 transition-transform" />
+          </div>
+        </div>
+      )}
+
+      {/* Всплывающий индикатор размеров во время масштабирования мышкой */}
+      {isResizingTable && liveDimensions && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-blue-600 text-white font-mono text-xs px-3.5 py-1.5 rounded-full shadow-xl border border-blue-400 flex items-center gap-2 pointer-events-none animate-in fade-in zoom-in-95">
+          <span>{liveDimensions.width} × {liveDimensions.height} px</span>
+        </div>
+      )}
+
       {/* Модалка подтверждения удаления документа */}
       {deleteDialog.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
@@ -728,5 +1013,6 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
       )}
 
     </div>
+    </>
   );
 };
