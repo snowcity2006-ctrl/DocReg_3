@@ -16,6 +16,8 @@ import {
   Layers,
   User,
   UserCheck,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import {
   DocumentRecord,
@@ -82,6 +84,9 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
 
   // Множественный выбор получателей (Организации)
   const [recipientIds, setRecipientIds] = useState<number[]>([]);
+
+  // Состояние разворачивания окна на весь экран
+  const [isMaximized, setIsMaximized] = useState(false);
 
   // Множественный выбор структурных подразделений для Получателя
   const [recipientDepartmentIds, setRecipientDepartmentIds] = useState<number[]>([]);
@@ -494,11 +499,20 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-[#171A21] rounded-2xl shadow-2xl border border-[#2D3139] w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh] text-[#E0E0E0]">
-        
-        {/* Заголовок формы */}
-        <div className="px-5 sm:px-6 py-3.5 sm:py-4 border-b border-[#2D3139] flex items-center justify-between bg-[#1F222B] shrink-0">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center ${isMaximized ? 'p-1' : 'p-2 sm:p-4'} bg-black/75 backdrop-blur-xs animate-in fade-in duration-150`}>
+      <div
+        className={`bg-[#171A21] shadow-2xl border border-[#2D3139] overflow-hidden flex flex-col text-[#E0E0E0] transition-all duration-200 ${
+          isMaximized
+            ? 'w-[99vw] h-[98vh] rounded-xl'
+            : 'w-[94vw] max-w-6xl max-h-[94vh] rounded-2xl'
+        }`}
+      >
+        {/* Заголовок формы (двойной клик разворачивает окно) */}
+        <div
+          onDoubleClick={() => setIsMaximized((prev) => !prev)}
+          title="Двойной клик разворачивает / восстанавливает окно"
+          className="px-5 sm:px-6 py-3.5 sm:py-4 border-b border-[#2D3139] flex items-center justify-between bg-[#1F222B] shrink-0 select-none cursor-default"
+        >
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-blue-600/10 text-blue-400 flex items-center justify-center border border-blue-500/20 shrink-0">
               <FileText className="w-4 h-4" />
@@ -512,16 +526,28 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-[#2D3139] transition-colors cursor-pointer shrink-0 ml-2"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1 shrink-0 ml-2">
+            <button
+              type="button"
+              onClick={() => setIsMaximized((prev) => !prev)}
+              title={isMaximized ? 'Восстановить исходный размер' : 'Развернуть на весь экран'}
+              className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-[#2D3139] transition-colors cursor-pointer"
+            >
+              {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              title="Закрыть окно"
+              className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-[#2D3139] transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Тело формы с полосой прокрутки */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto overflow-x-hidden space-y-4 sm:space-y-5 text-xs">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto overflow-x-hidden space-y-4 sm:space-y-5 text-xs flex-1">
           
           {error && (
             <div className="p-3.5 bg-rose-950/50 border border-rose-900/60 rounded-xl text-xs text-rose-300 flex items-center gap-2.5 min-w-0">

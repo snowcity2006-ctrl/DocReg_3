@@ -14,7 +14,9 @@ import {
   ChevronRight,
   ShieldCheck,
   CheckCircle2,
-  Laptop
+  Laptop,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { electronBridge } from '../services/electronBridge';
 
@@ -163,6 +165,7 @@ export const FolderBrowserModal: React.FC<FolderBrowserModalProps> = ({
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [activeTab, setActiveTab] = useState<'network' | 'tree' | 'manual'>('network');
   const [customFolders, setCustomFolders] = useState<Record<string, string[]>>({});
+  const [isMaximized, setIsMaximized] = useState(false);
 
   if (!isOpen) return null;
 
@@ -268,31 +271,51 @@ export const FolderBrowserModal: React.FC<FolderBrowserModalProps> = ({
   const subfolders = getSubfolders(currentPath);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-[#171A21] rounded-2xl shadow-2xl border border-[#2D3139] w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh] text-[#E0E0E0]">
-        
-        {/* Заголовок модального окна */}
-        <div className="px-5 sm:px-6 py-4 border-b border-[#2D3139] flex items-center justify-between bg-[#1F222B]/70 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center border border-blue-500/30">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center ${isMaximized ? 'p-1' : 'p-2 sm:p-4'} bg-black/75 backdrop-blur-xs animate-in fade-in duration-200`}>
+      <div
+        className={`bg-[#171A21] shadow-2xl border border-[#2D3139] overflow-hidden flex flex-col text-[#E0E0E0] transition-all duration-200 ${
+          isMaximized
+            ? 'w-[99vw] h-[98vh] rounded-xl'
+            : 'w-[92vw] max-w-5xl max-h-[92vh] rounded-2xl'
+        }`}
+      >
+        {/* Заголовок модального окна (двойной клик разворачивает окно) */}
+        <div
+          onDoubleClick={() => setIsMaximized((prev) => !prev)}
+          title="Двойной клик разворачивает / восстанавливает окно"
+          className="px-5 sm:px-6 py-4 border-b border-[#2D3139] flex items-center justify-between bg-[#1F222B]/70 shrink-0 select-none cursor-default"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center border border-blue-500/30 shrink-0">
               <FolderOpen className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="text-base font-bold text-[#E0E0E0] leading-tight">
+            <div className="min-w-0">
+              <h3 className="text-base font-bold text-[#E0E0E0] leading-tight truncate">
                 {title}
               </h3>
-              <p className="text-xs text-gray-400 mt-0.5">
+              <p className="text-xs text-gray-400 mt-0.5 truncate">
                 Поддержка сетевых дисков (SMB/NFS/UNC) и локальных путей Astra Linux и Windows
               </p>
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-[#2D3139] transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1 shrink-0 ml-2">
+            <button
+              type="button"
+              onClick={() => setIsMaximized((prev) => !prev)}
+              title={isMaximized ? 'Восстановить исходный размер' : 'Развернуть на весь экран'}
+              className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-[#2D3139] transition-colors cursor-pointer"
+            >
+              {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={onClose}
+              title="Закрыть окно"
+              className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-[#2D3139] transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Вкладки: Сетевые ресурсы / Проводник каталогов / Ручной ввод */}

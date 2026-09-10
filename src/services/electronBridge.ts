@@ -1256,6 +1256,21 @@ class WebMockDatabase implements ElectronAPI {
       isElectron: false,
     };
   }
+
+  setZoomFactor(factor: number): void {
+    try {
+      (document.documentElement.style as any).zoom = String(factor);
+    } catch {}
+  }
+
+  getZoomFactor(): number {
+    try {
+      const z = (document.documentElement.style as any).zoom;
+      return z ? parseFloat(z) : 1.0;
+    } catch {
+      return 1.0;
+    }
+  }
 }
 
 // Единый экземпляр сервиса

@@ -1,7 +1,7 @@
 /**
  * Preload скрипт для безопасного IPC обмена между Main и Renderer процессами Electron
  */
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webFrame } from 'electron';
 import { ElectronAPI, LogLevel } from '../src/types';
 
 const api: ElectronAPI = {
@@ -61,8 +61,22 @@ const api: ElectronAPI = {
   exportLogs: () => ipcRenderer.invoke('logs:export'),
   clearLogs: () => ipcRenderer.invoke('logs:clear'),
 
-  // Системная информация
+  // Системная информация и масштабирование
   getSystemInfo: () => ipcRenderer.invoke('system:getInfo'),
+  setZoomFactor: (factor: number) => {
+    try {
+      webFrame.setZoomFactor(factor);
+    } catch (e) {
+      console.error('Error setting zoom factor:', e);
+    }
+  },
+  getZoomFactor: () => {
+    try {
+      return webFrame.getZoomFactor();
+    } catch {
+      return 1.0;
+    }
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

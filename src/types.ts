@@ -211,8 +211,10 @@ export interface ElectronAPI {
   exportLogs: () => Promise<{ success: boolean; path?: string }>;
   clearLogs: () => Promise<void>;
 
-  // Системная информация
+  // Системная информация и масштабирование
   getSystemInfo: () => Promise<{ platform: string; isAstraLinux: boolean; version: string; isElectron: boolean }>;
+  setZoomFactor?: (factor: number) => void;
+  getZoomFactor?: () => number;
 }
 
 declare global {

@@ -14,6 +14,8 @@ import {
   FileText,
   Network,
   Archive,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { DatabaseConfig } from '../types';
 import { electronBridge } from '../services/electronBridge';
@@ -40,6 +42,7 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
   const [backupFolder, setBackupFolder] = useState('');
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
     message: string;
@@ -220,37 +223,58 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
   const isBackupNetwork = isNetworkPath(backupFolder);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-[#171A21] rounded-2xl shadow-2xl border border-[#2D3139] w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        
-        {/* Заголовок */}
-        <div className="px-6 py-4 border-b border-[#2D3139] flex items-center justify-between bg-[#12151B]/60">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-blue-950/80 text-blue-400 flex items-center justify-center border border-blue-900/60">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center ${isMaximized ? 'p-1' : 'p-2 sm:p-4'} bg-black/75 backdrop-blur-xs animate-in fade-in duration-200`}>
+      <div
+        className={`bg-[#171A21] shadow-2xl border border-[#2D3139] overflow-hidden flex flex-col transition-all duration-200 ${
+          isMaximized
+            ? 'w-[99vw] h-[98vh] rounded-xl'
+            : 'w-[92vw] max-w-4xl max-h-[92vh] rounded-2xl'
+        }`}
+      >
+        {/* Заголовок (двойной клик разворачивает окно) */}
+        <div
+          onDoubleClick={() => setIsMaximized((prev) => !prev)}
+          title="Двойной клик разворачивает / восстанавливает окно"
+          className="px-6 py-4 border-b border-[#2D3139] flex items-center justify-between bg-[#12151B]/60 shrink-0 select-none cursor-default"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-lg bg-blue-950/80 text-blue-400 flex items-center justify-center border border-blue-900/60 shrink-0">
               <Database className="w-5 h-5" />
             </div>
-            <div>
-              <h2 className="text-base font-bold text-[#E0E0E0]">
+            <div className="min-w-0">
+              <h2 className="text-base font-bold text-[#E0E0E0] truncate">
                 {isFirstLaunch ? 'Первоначальная настройка сетевой базы данных' : 'Настройка подключения к БД SQLite'}
               </h2>
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-gray-400 truncate">
                 Сетевой диск SMB / NFS для одновременной работы 6–10 пользователей
               </p>
             </div>
           </div>
 
-          {!isFirstLaunch && (
+          <div className="flex items-center gap-1 shrink-0 ml-2">
             <button
-              onClick={onClose}
+              type="button"
+              onClick={() => setIsMaximized((prev) => !prev)}
+              title={isMaximized ? 'Восстановить исходный размер' : 'Развернуть на весь экран'}
               className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-[#1F222B] transition-colors cursor-pointer"
             >
-              <X className="w-5 h-5" />
+              {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
-          )}
+            {!isFirstLaunch && (
+              <button
+                type="button"
+                onClick={onClose}
+                title="Закрыть окно"
+                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-[#1F222B] transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Тело формы */}
-        <div className="p-6 overflow-y-auto space-y-5 text-sm">
+        <div className="p-6 overflow-y-auto space-y-5 text-sm flex-1">
           {error && (
             <div className="p-3.5 bg-rose-950/50 border border-rose-900/60 rounded-xl text-xs text-rose-300 flex items-start gap-2.5">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />

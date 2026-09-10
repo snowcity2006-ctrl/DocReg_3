@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Terminal, X, RefreshCw, Trash2, Download, Copy, Check } from 'lucide-react';
+import { Terminal, X, RefreshCw, Trash2, Download, Copy, Check, Maximize2, Minimize2 } from 'lucide-react';
 import { LogEntry } from '../types';
 import { electronBridge } from '../services/electronBridge';
 import { formatDateTimeRussian } from '../utils/date';
@@ -14,6 +14,7 @@ export const LogsModal: React.FC<LogsModalProps> = ({ isOpen, onClose }) => {
   const [loading, setLoading] = useState(false);
   const [filterLevel, setFilterLevel] = useState<string>('all');
   const [copied, setCopied] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(false);
 
   const loadLogs = async () => {
     setLoading(true);
@@ -57,26 +58,35 @@ export const LogsModal: React.FC<LogsModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-[#171A21] text-[#E0E0E0] rounded-2xl shadow-2xl border border-[#2D3139] w-full max-w-4xl overflow-hidden flex flex-col max-h-[85vh]">
-        
-        {/* Заголовок */}
-        <div className="px-6 py-4 border-b border-[#2D3139] flex items-center justify-between bg-[#12151B]/60 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-950/80 text-blue-400 flex items-center justify-center border border-blue-900/60">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center ${isMaximized ? 'p-1' : 'p-2 sm:p-4'} bg-black/75 backdrop-blur-xs animate-in fade-in duration-150`}>
+      <div
+        className={`bg-[#171A21] text-[#E0E0E0] shadow-2xl border border-[#2D3139] overflow-hidden flex flex-col transition-all duration-200 ${
+          isMaximized
+            ? 'w-[99vw] h-[98vh] rounded-xl'
+            : 'w-[94vw] max-w-6xl max-h-[92vh] rounded-2xl'
+        }`}
+      >
+        {/* Заголовок (двойной клик разворачивает окно) */}
+        <div
+          onDoubleClick={() => setIsMaximized((prev) => !prev)}
+          title="Двойной клик разворачивает / восстанавливает окно"
+          className="px-6 py-4 border-b border-[#2D3139] flex items-center justify-between bg-[#12151B]/60 shrink-0 select-none cursor-default"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-blue-950/80 text-blue-400 flex items-center justify-center border border-blue-900/60 shrink-0">
               <Terminal className="w-4 h-4" />
             </div>
-            <div>
-              <h3 className="text-base font-bold text-[#E0E0E0]">
+            <div className="min-w-0">
+              <h3 className="text-base font-bold text-[#E0E0E0] truncate">
                 Журнал системных событий и ошибок
               </h3>
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-gray-400 truncate">
                 Диагностика работы SQLite, сети SMB/NFS и блокировок busy_timeout
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0 ml-2">
             <button
               onClick={loadLogs}
               disabled={loading}
@@ -100,7 +110,16 @@ export const LogsModal: React.FC<LogsModalProps> = ({ isOpen, onClose }) => {
               <Trash2 className="w-4 h-4" />
             </button>
             <button
+              type="button"
+              onClick={() => setIsMaximized((prev) => !prev)}
+              title={isMaximized ? 'Восстановить исходный размер' : 'Развернуть на весь экран'}
+              className="p-1.5 text-gray-400 hover:text-white hover:bg-[#1F222B] rounded-lg transition-colors cursor-pointer"
+            >
+              {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
+            <button
               onClick={onClose}
+              title="Закрыть окно"
               className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-[#1F222B] transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />

@@ -13,6 +13,8 @@ import {
   ExternalLink,
   Clock,
   MessageSquare,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { DocumentRecord } from '../../types';
 import { formatDateRussian, formatDateTimeRussian } from '../../utils/date';
@@ -31,6 +33,8 @@ export const DocumentCardModal: React.FC<DocumentCardModalProps> = ({
   document: doc,
   onEdit,
 }) => {
+  const [isMaximized, setIsMaximized] = React.useState(false);
+
   if (!isOpen || !doc) return null;
 
   const handleOpenFile = async () => {
@@ -50,17 +54,26 @@ export const DocumentCardModal: React.FC<DocumentCardModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-[#171A21] rounded-2xl shadow-2xl border border-[#2D3139] w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] text-[#E0E0E0]">
-        
-        {/* Заголовок карточки */}
-        <div className="px-6 py-4 border-b border-[#2D3139] flex items-center justify-between bg-[#1F222B] shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-600/10 text-blue-400 flex items-center justify-center border border-blue-500/20">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center ${isMaximized ? 'p-1' : 'p-2 sm:p-4'} bg-black/75 backdrop-blur-xs animate-in fade-in duration-150`}>
+      <div
+        className={`bg-[#171A21] shadow-2xl border border-[#2D3139] overflow-hidden flex flex-col text-[#E0E0E0] transition-all duration-200 ${
+          isMaximized
+            ? 'w-[99vw] h-[98vh] rounded-xl'
+            : 'w-[92vw] max-w-5xl max-h-[92vh] rounded-2xl'
+        }`}
+      >
+        {/* Заголовок карточки (двойной клик разворачивает окно) */}
+        <div
+          onDoubleClick={() => setIsMaximized((prev) => !prev)}
+          title="Двойной клик разворачивает / восстанавливает окно"
+          className="px-6 py-4 border-b border-[#2D3139] flex items-center justify-between bg-[#1F222B] shrink-0 select-none cursor-default"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-blue-600/10 text-blue-400 flex items-center justify-center border border-blue-500/20 shrink-0">
               <FileText className="w-4 h-4" />
             </div>
-            <div>
-              <h3 className="text-base font-bold text-[#E0E0E0] flex items-center gap-2">
+            <div className="min-w-0">
+              <h3 className="text-base font-bold text-[#E0E0E0] flex items-center gap-2 flex-wrap">
                 <span>Карточка документа №{doc.id}</span>
                 <span className="text-[11px] font-normal px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono">
                   {doc.docTypeName}
@@ -72,7 +85,7 @@ export const DocumentCardModal: React.FC<DocumentCardModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0 ml-2">
             <button
               onClick={handlePrint}
               title="Печать карточки документа"
@@ -91,7 +104,16 @@ export const DocumentCardModal: React.FC<DocumentCardModalProps> = ({
               <Edit2 className="w-4 h-4" />
             </button>
             <button
+              type="button"
+              onClick={() => setIsMaximized((prev) => !prev)}
+              title={isMaximized ? 'Восстановить исходный размер' : 'Развернуть на весь экран'}
+              className="p-1.5 text-gray-400 hover:text-white hover:bg-[#2D3139] rounded-lg transition-colors cursor-pointer"
+            >
+              {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
+            <button
               onClick={onClose}
+              title="Закрыть окно"
               className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-[#2D3139] transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
@@ -100,7 +122,7 @@ export const DocumentCardModal: React.FC<DocumentCardModalProps> = ({
         </div>
 
         {/* Содержимое карточки */}
-        <div className="p-6 overflow-y-auto space-y-5 text-xs">
+        <div className="p-6 overflow-y-auto space-y-5 text-xs flex-1">
           
           {/* Тема документа */}
           <div className="p-4 bg-[#0F1115] rounded-xl border border-[#2D3139]">
