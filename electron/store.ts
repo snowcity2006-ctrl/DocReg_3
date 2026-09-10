@@ -19,6 +19,8 @@ const DEFAULT_CONFIG: DatabaseConfig = {
   backupFolder: '',
   isNetworkPath: false,
   isAccessible: false,
+  syncMode: 'auto',
+  isUsingLocalCache: false,
 };
 
 class ConfigStore {

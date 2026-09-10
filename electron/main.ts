@@ -163,6 +163,7 @@ function setupIpcHandlers() {
     const cfg = store.getDbConfig();
     const access = await dbManager.checkPathAccessibility(cfg.dbPath);
     const count = dbManager.getDocumentsCount();
+    const status = dbManager.getStatus();
     return {
       connected: access.accessible,
       path: cfg.dbPath,
@@ -170,13 +171,16 @@ function setupIpcHandlers() {
       isAccessible: access.accessible,
       lastSync: cfg.lastConnected || new Date().toISOString(),
       recordsCount: count,
-      mountWarning: access.mountWarning,
+      mountWarning: status.mountWarning || access.mountWarning,
+      isUsingLocalCache: status.isUsingLocalCache,
+      syncMode: cfg.syncMode || status.syncMode || 'auto',
+      hasNobrl: status.hasNobrl,
     };
   });
 
   ipcMain.handle('db:setPath', async (_event, newPath: string) => {
     const currentCfg = store.getDbConfig();
-    const res = await dbManager.connect(newPath, currentCfg.busyTimeout || 5000);
+    const res = await dbManager.connect(newPath, currentCfg.busyTimeout || 10000, currentCfg.syncMode || 'auto');
     if (res.success) {
       const isNet = newPath.startsWith('//') || newPath.startsWith('\\\\') || newPath.includes('/mnt/') || newPath.includes('smb') || newPath.includes('nfs');
       const updated = store.setDbConfig({
@@ -184,6 +188,7 @@ function setupIpcHandlers() {
         isNetworkPath: isNet,
         isAccessible: true,
         lastConnected: new Date().toISOString(),
+        isUsingLocalCache: res.isUsingLocalCache ?? false,
       });
       return { success: true, message: res.message, config: updated };
     }
@@ -193,19 +198,26 @@ function setupIpcHandlers() {
   ipcMain.handle('db:saveConfig', async (_event, newConfig: Partial<DatabaseConfig>) => {
     let isNet: boolean | undefined = undefined;
     const currentCfg = store.getDbConfig();
-    const effectiveTimeout = newConfig.busyTimeout || currentCfg.busyTimeout || 5000;
-    if (newConfig.dbPath) {
-      const res = await dbManager.connect(newConfig.dbPath, effectiveTimeout);
+    const targetPath = newConfig.dbPath || currentCfg.dbPath;
+    const effectiveTimeout = newConfig.busyTimeout || currentCfg.busyTimeout || 10000;
+    const effectiveSyncMode = newConfig.syncMode || currentCfg.syncMode || 'auto';
+
+    let isUsingCache = currentCfg.isUsingLocalCache ?? false;
+    if (targetPath) {
+      const res = await dbManager.connect(targetPath, effectiveTimeout, effectiveSyncMode);
       if (!res.success) {
         return { success: false, message: res.message };
       }
-      isNet = newConfig.dbPath.startsWith('//') || newConfig.dbPath.startsWith('\\\\') || newConfig.dbPath.includes('/mnt/') || newConfig.dbPath.includes('smb') || newConfig.dbPath.includes('nfs');
+      isUsingCache = res.isUsingLocalCache ?? false;
+      isNet = targetPath.startsWith('//') || targetPath.startsWith('\\\\') || targetPath.includes('/mnt/') || targetPath.includes('smb') || targetPath.includes('nfs');
     }
     const updated = store.setDbConfig({
       ...newConfig,
       ...(isNet !== undefined ? { isNetworkPath: isNet } : {}),
       isAccessible: true,
       lastConnected: new Date().toISOString(),
+      isUsingLocalCache: isUsingCache,
+      syncMode: effectiveSyncMode,
     });
     return { success: true, message: 'Настройки базы данных успешно сохранены', config: updated };
   });
@@ -213,16 +225,21 @@ function setupIpcHandlers() {
   ipcMain.handle('db:testConnection', async (_event, targetPath?: string) => {
     const cfg = store.getDbConfig();
     const p = targetPath || cfg.dbPath;
-    const access = await dbManager.checkPathAccessibility(p);
+    const testRes = await dbManager.testWriteLock(p);
     return {
-      success: access.accessible,
-      message: access.accessible ? 'Сетевой путь доступен' : `Ошибка доступа: ${access.error}`,
-      isNetwork: p.includes('/mnt/') || p.includes('smb') || p.includes('nfs') || p.startsWith('\\\\'),
+      success: testRes.accessible,
+      message: testRes.message,
+      isNetwork: testRes.isNetwork,
+      writeLockOk: testRes.writeLockOk,
+      hasNobrl: testRes.hasNobrl,
+      mountWarning: testRes.mountWarning,
+      recommendedMode: testRes.recommendedMode,
     };
   });
 
   ipcMain.handle('db:refresh', async () => {
     const cfg = store.getDbConfig();
+    await dbManager.syncFromNetworkIfNeeded();
     const access = await dbManager.checkPathAccessibility(cfg.dbPath);
     const nowIso = new Date().toISOString();
     store.setDbConfig({
@@ -434,7 +451,10 @@ if (!gotTheLock) {
 
     if (config.dbPath) {
       try {
-        await dbManager.connect(config.dbPath, config.busyTimeout);
+        const connRes = await dbManager.connect(config.dbPath, config.busyTimeout, config.syncMode);
+        if (connRes.isUsingLocalCache !== undefined) {
+          store.setDbConfig({ isUsingLocalCache: connRes.isUsingLocalCache });
+        }
         if (config.autoBackupOnStart) {
           await backupManager.createBackup(true);
         }

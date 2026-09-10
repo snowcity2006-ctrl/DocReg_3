@@ -42,7 +42,7 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({
     } else {
       setName('');
       setShortName('');
-      setOrganizationId(defaultOrganizationId || (organizations.length > 0 ? organizations[0].id : ''));
+      setOrganizationId(defaultOrganizationId || '');
     }
     setError(null);
   }, [initialData, isOpen, organizations, defaultOrganizationId]);

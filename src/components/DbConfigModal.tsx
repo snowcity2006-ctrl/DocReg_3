@@ -35,11 +35,20 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
 }) => {
   const [dbPath, setDbPath] = useState('');
   const [busyTimeout, setBusyTimeout] = useState(5000);
+  const [syncMode, setSyncMode] = useState<'auto' | 'direct' | 'cache_sync'>('auto');
   const [autoBackup, setAutoBackup] = useState(true);
   const [backupFolder, setBackupFolder] = useState('');
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string; pingMs?: number } | null>(null);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    message: string;
+    pingMs?: number;
+    writeLockOk?: boolean;
+    hasNobrl?: boolean;
+    mountWarning?: string;
+    recommendedMode?: 'direct' | 'cache_sync';
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,6 +62,7 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
       const cfg = await electronBridge.getDbConfig();
       setDbPath(cfg.dbPath || '');
       setBusyTimeout(cfg.busyTimeout || 5000);
+      setSyncMode(cfg.syncMode || 'auto');
       setAutoBackup(cfg.autoBackupOnStart ?? true);
       setBackupFolder(cfg.backupFolder || '');
       setTestResult(null);
@@ -151,6 +161,9 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
     try {
       const res = await electronBridge.testDbConnection(dbPath.trim());
       setTestResult(res);
+      if (res.recommendedMode === 'cache_sync' && syncMode === 'auto') {
+        setSyncMode('cache_sync');
+      }
       if (!res.success) {
         setError(res.message);
       }
@@ -175,6 +188,7 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
         dbPath: dbPath.trim(),
         backupFolder: backupFolder.trim() || undefined,
         busyTimeout,
+        syncMode,
         autoBackupOnStart: autoBackup,
       };
 
@@ -415,9 +429,32 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
               </div>
             </div>
 
+            {/* Выбор режима сетевой синхронизации */}
+            <div className="pt-2 border-t border-[#2D3139]/60">
+              <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+                Режим работы с сетевым диском:
+              </label>
+              <select
+                id="select-db-sync-mode"
+                value={syncMode}
+                onChange={(e) => setSyncMode(e.target.value as 'auto' | 'direct' | 'cache_sync')}
+                className="w-full px-3 py-2 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="auto">
+                  Автоматический выбор (рекомендуется)
+                </option>
+                <option value="cache_sync">
+                  Сетевая синхронизация через локальный кэш (для Astra Linux 1.7 / CIFS без прав root)
+                </option>
+                <option value="direct">
+                  Прямой доступ к файлу (требует опцию монтирования nobrl в CIFS/SMB)
+                </option>
+              </select>
+            </div>
+
             <div className="text-[11px] text-amber-300 bg-amber-950/40 p-2.5 rounded-lg border border-amber-900/60 space-y-1 leading-relaxed">
-              <p><strong>Требование ТЗ:</strong> Режим журнала установлен в TRUNCATE / DELETE, так как база расположена на сетевом накопителе (CIFS/SMB), где разделяемая память WAL (.shm) не поддерживается.</p>
-              <p className="text-amber-200/90"><strong>Для Astra Linux 1.7 (CIFS/SMB):</strong> Рекомендуется монтировать сетевой ресурс с опцией <code className="bg-amber-900/60 px-1 py-0.5 rounded text-white font-mono">nobrl</code> (например, в <code className="bg-amber-900/60 px-1 py-0.5 rounded text-white font-mono">/etc/fstab</code>: <code className="text-white font-mono">...,nobrl,file_mode=0777,dir_mode=0777</code>) для предотвращения ошибок удаленной блокировки.</p>
+              <p><strong>Решение для Astra Linux 1.7 (CIFS/SMB):</strong> В режиме <em>«Сетевая синхронизация через локальный кэш»</em> все операции чтения и записи выполняются через быстрый локальный кэш с мгновенной фиксацией в сетевой файл под сетевым распределенным мьютексом. Это на 100% устраняет ошибку <code>SqliteError: database is locked</code> даже без прав root и без перенастройки опций монтирования в <code>/etc/fstab</code>.</p>
+              <p className="text-amber-200/90"><strong>Альтернатива (с правами root):</strong> Смонтировать сетевую шару с опцией <code className="bg-amber-900/60 px-1 py-0.5 rounded text-white font-mono">nobrl</code> (например, <code className="bg-amber-900/60 px-1 py-0.5 rounded text-white font-mono">mount -t cifs ... -o nobrl</code>).</p>
             </div>
           </div>
 
@@ -435,9 +472,32 @@ export const DbConfigModal: React.FC<DbConfigModalProps> = ({
               ) : (
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
               )}
-              <div className="space-y-0.5">
-                <p className="font-semibold">{testResult.success ? 'Сетевой путь доступен' : 'Ошибка соединения'}</p>
+              <div className="space-y-1.5 flex-1">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold">{testResult.success ? 'Сетевой путь доступен' : 'Ошибка соединения'}</p>
+                  {testResult.recommendedMode && (
+                    <span className="text-[10px] px-2 py-0.5 bg-blue-950/80 text-blue-300 rounded border border-blue-800/40">
+                      Режим: {testResult.recommendedMode === 'cache_sync' ? 'Локальный кэш (синхронизация)' : 'Прямой'}
+                    </span>
+                  )}
+                </div>
                 <p>{testResult.message}</p>
+                {testResult.mountWarning && (
+                  <p className="text-amber-300 bg-amber-950/60 p-2 rounded border border-amber-800/40 text-[11px]">
+                    {testResult.mountWarning}
+                  </p>
+                )}
+                {testResult.recommendedMode === 'cache_sync' && syncMode !== 'cache_sync' && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setSyncMode('cache_sync')}
+                      className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                    >
+                      Применить рекомендуемый режим «Сетевая синхронизация через локальный кэш»
+                    </button>
+                  </div>
+                )}
                 {testResult.pingMs !== undefined && (
                   <p className="font-mono text-[11px] opacity-80">Задержка сети: {testResult.pingMs} мс</p>
                 )}

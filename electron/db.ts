@@ -15,6 +15,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { app } from 'electron';
 import { createRequire } from 'module';
 import {
   Organization,
@@ -90,6 +91,11 @@ export function safeCopyFile(source: string, destination: string): void {
 class SQLiteDatabaseManager {
   private db: any = null;
   private currentDbPath: string = '';
+  private networkMasterPath: string = '';
+  private localWorkingPath: string = '';
+  private isUsingLocalCache: boolean = false;
+  private syncMode: 'auto' | 'direct' | 'cache_sync' = 'auto';
+  private lastNetworkSyncMtime: number = 0;
   private writeQueue: Promise<any> = Promise.resolve();
 
   /**
@@ -165,14 +171,122 @@ class SQLiteDatabaseManager {
   }
 
   /**
+   * Проверяет поддержку транзакций записи SQLite по заданному пути
+   */
+  public async testWriteLock(targetPath: string): Promise<{
+    accessible: boolean;
+    writeLockOk: boolean;
+    isNetwork: boolean;
+    isCifs: boolean;
+    hasNobrl: boolean;
+    mountWarning?: string;
+    error?: string;
+    message: string;
+    recommendedMode: 'direct' | 'cache_sync';
+  }> {
+    const access = await this.checkPathAccessibility(targetPath);
+    if (!access.accessible) {
+      return {
+        accessible: false,
+        writeLockOk: false,
+        isNetwork: false,
+        isCifs: false,
+        hasNobrl: true,
+        error: access.error,
+        message: `Путь недоступен: ${access.error}`,
+        recommendedMode: 'direct',
+      };
+    }
+
+    const isNetwork = targetPath.startsWith('//') || targetPath.startsWith('\\\\') || targetPath.includes('/mnt/') || targetPath.includes('smb') || targetPath.includes('nfs');
+    const mountCheck = this.checkLinuxMountOptions(targetPath);
+    const isCifs = mountCheck.isCifs;
+    const hasNobrl = mountCheck.hasNobrl;
+
+    // Если это Linux CIFS без nobrl - прямые блокировки SQLite заведомо сбоят
+    if (isCifs && !hasNobrl) {
+      return {
+        accessible: true,
+        writeLockOk: false,
+        isNetwork: true,
+        isCifs: true,
+        hasNobrl: false,
+        mountWarning: mountCheck.warning,
+        message: 'Сетевой ресурс смонтирован без опции nobrl! Прямые блокировки SQLite на CIFS могут вызывать ошибку "database is locked". Рекомендуется режим сетевой синхронизации кэша (работает без прав root).',
+        recommendedMode: 'cache_sync',
+      };
+    }
+
+    if (DatabaseConstructor) {
+      const probeFile = fs.existsSync(targetPath)
+        ? targetPath
+        : path.join(path.dirname(targetPath), `.probe_${process.pid}_${Date.now()}.sqlite`);
+      const isNew = probeFile !== targetPath;
+      try {
+        const probeDb = new DatabaseConstructor(probeFile, { timeout: 3000 });
+        try {
+          probeDb.pragma('busy_timeout = 3000');
+          probeDb.pragma('journal_mode = MEMORY');
+          const tx = probeDb.transaction(() => {
+            probeDb.prepare('CREATE TABLE IF NOT EXISTS _lock_probe (id INT)').run();
+          });
+          tx();
+        } finally {
+          try { probeDb.close(); } catch {}
+          if (isNew && fs.existsSync(probeFile)) {
+            try { fs.unlinkSync(probeFile); } catch {}
+          }
+        }
+        return {
+          accessible: true,
+          writeLockOk: true,
+          isNetwork,
+          isCifs,
+          hasNobrl,
+          mountWarning: mountCheck.warning,
+          message: 'Сетевой путь доступен, транзакции записи SQLite функционируют корректно.',
+          recommendedMode: 'direct',
+        };
+      } catch (err: any) {
+        const errMsg = String(err?.message || '');
+        const isLocked = errMsg.includes('database is locked') || errMsg.includes('busy');
+        return {
+          accessible: true,
+          writeLockOk: false,
+          isNetwork,
+          isCifs,
+          hasNobrl,
+          mountWarning: mountCheck.warning || (isLocked ? 'Ошибка блокировки SQLite (database is locked)' : errMsg),
+          error: errMsg,
+          message: isLocked
+            ? 'Сетевой путь доступен, но запись в SQLite заблокирована сетевым ресурсом (database is locked). Для Astra Linux 1.7 используйте режим сетевой синхронизации кэша, либо смонтируйте CIFS с опцией nobrl.'
+            : `Сетевой путь доступен, но возникла ошибка: ${errMsg}`,
+          recommendedMode: 'cache_sync',
+        };
+      }
+    }
+
+    return {
+      accessible: true,
+      writeLockOk: true,
+      isNetwork,
+      isCifs,
+      hasNobrl,
+      message: 'Сетевой путь доступен.',
+      recommendedMode: isNetwork && isCifs && !hasNobrl ? 'cache_sync' : 'direct',
+    };
+  }
+
+  /**
    * Захватывает распределенную межпроцессную блокировку на сетевом диске
    * с защитой от зависших блокировок (stale lock threshold)
    */
   private async acquireDistributedLock(timeoutMs = 30000): Promise<() => void> {
-    if (!this.currentDbPath) return () => {};
-    const lockFilePath = `${this.currentDbPath}.netlock`;
+    const targetPath = (this.isUsingLocalCache && this.networkMasterPath) ? this.networkMasterPath : this.currentDbPath;
+    if (!targetPath) return () => {};
+    const lockFilePath = `${targetPath}.netlock`;
     const startTime = Date.now();
-    const staleLockThresholdMs = 12000; // 12 секунд макс на операцию, иначе блокировка считается зависшей
+    const staleLockThresholdMs = 15000; // 15 секунд макс на операцию, иначе блокировка считается зависшей
 
     while (Date.now() - startTime < timeoutMs) {
       try {
@@ -195,7 +309,12 @@ class SQLiteDatabaseManager {
             if (fs.existsSync(lockFilePath)) {
               fs.unlinkSync(lockFilePath);
             }
-          } catch {}
+          } catch {
+            try {
+              fs.writeFileSync(lockFilePath, '');
+              fs.unlinkSync(lockFilePath);
+            } catch {}
+          }
         };
       } catch (err: any) {
         if (err.code === 'EEXIST') {
@@ -276,19 +395,97 @@ class SQLiteDatabaseManager {
   /**
    * Безопасное выполнение операций записи в SQLite:
    * 1. Вся очередь записи сериализуется в процессе через writeQueue.
-   * 2. Захватывается распределенная межпроцессная блокировка на сетевом носителе (.netlock).
-   * 3. Операция выполняется внутри транзакции BEGIN IMMEDIATE (через db.transaction().immediate),
-   *    что гарантирует захват блокировки записи СРАЗУ, полностью исключая сбой lock promotion (SHARED -> EXCLUSIVE)
-   *    в ядре Linux cifs.ko на Astra Linux 1.7.
-   * 4. При временной блокировке сетевого файла (SQLITE_BUSY / database is locked)
-   *    производится серия повторных попыток с экспоненциальным бэкоффом (runWithRetry).
+   * 2. В режиме локального кэша с сетевой синхронизацией:
+   *    - Захватывается сетевой .netlock на мастере.
+   *    - Проверяется mtime мастера: если другой клиент обновил базу, кэш перезагружается.
+   *    - Запись выполняется в локальную БД без сетевых задержек и без сбоев блокировок.
+   *    - Локальный файл атомарно экспортируется на сетевой диск через временный файл.
+   *    - Освобождается .netlock.
+   * 3. В прямом режиме:
+   *    - Захватывается сетевой .netlock.
+   *    - Выполняется транзакция записи с механизмом повторов runWithRetry.
+   *    - При критической блокировке CIFS происходит автоматический fallback в режим кэша.
    */
   private runWriteTransaction<T>(operation: () => T): Promise<T> {
     const task = async (): Promise<T> => {
       if (!this.db || !this.db.open) throw new Error('БД не подключена');
 
-      const releaseLock = await this.acquireDistributedLock(30000);
+      // 1. Если активен режим локального кэша с сетевой синхронизацией
+      if (this.isUsingLocalCache && this.networkMasterPath) {
+        const releaseLock = await this.acquireDistributedLock(30000);
+        try {
+          // Проверяем, не обновил ли файл другой пользователь
+          if (fs.existsSync(this.networkMasterPath)) {
+            try {
+              const netStat = fs.statSync(this.networkMasterPath);
+              if (netStat.mtimeMs > this.lastNetworkSyncMtime + 150) {
+                logger.log('info', 'db', 'Обнаружены внешние изменения базы данных другим пользователем, обновляем кэш перед записью...');
+                if (this.db && this.db.open) {
+                  try { this.db.close(); } catch {}
+                }
+                safeCopyFile(this.networkMasterPath, this.localWorkingPath);
+                this.db = new DatabaseConstructor(this.localWorkingPath, { timeout: 10000 });
+                this.db.pragma('journal_mode = MEMORY');
+                this.db.pragma('synchronous = NORMAL');
+                this.db.pragma('foreign_keys = ON');
+                this.db.pragma('temp_store = MEMORY');
+                this.lastNetworkSyncMtime = netStat.mtimeMs;
+              }
+            } catch (syncCheckErr: any) {
+              logger.log('warn', 'db', `Предупреждение проверки сетевого mtime: ${syncCheckErr.message}`);
+            }
+          }
 
+          // Страховка от предшествующих незакрытых транзакций
+          if (this.db.inTransaction) {
+            try { this.db.exec('ROLLBACK;'); } catch {}
+          }
+
+          // Выполняем транзакцию в локальной БД
+          let result: T;
+          if (typeof this.db.transaction === 'function') {
+            const tx = this.db.transaction(() => operation());
+            result = tx();
+          } else {
+            this.db.exec('BEGIN;');
+            try {
+              result = operation();
+              this.db.exec('COMMIT;');
+            } catch (txErr) {
+              try { this.db.exec('ROLLBACK;'); } catch {}
+              throw txErr;
+            }
+          }
+
+          // Синхронизируем локальный файл в сетевой мастер-файл через временный файл
+          const tempNetPath = `${this.networkMasterPath}.tmp_${process.pid}_${Date.now()}`;
+          try {
+            safeCopyFile(this.localWorkingPath, tempNetPath);
+            try {
+              fs.renameSync(tempNetPath, this.networkMasterPath);
+            } catch {
+              safeCopyFile(this.localWorkingPath, this.networkMasterPath);
+              try { if (fs.existsSync(tempNetPath)) fs.unlinkSync(tempNetPath); } catch {}
+            }
+          } catch (netWriteErr: any) {
+            logger.log('error', 'db', `Ошибка синхронизации на сетевой диск: ${netWriteErr.message}`);
+            throw new Error(`Не удалось синхронизировать запись с сетевым диском: ${netWriteErr.message}`);
+          }
+
+          if (fs.existsSync(this.networkMasterPath)) {
+            try {
+              this.lastNetworkSyncMtime = fs.statSync(this.networkMasterPath).mtimeMs;
+            } catch {}
+          }
+
+          return result;
+        } finally {
+          releaseLock();
+        }
+      }
+
+      // 2. Прямой режим доступа к SQLite
+      const releaseLock = await this.acquireDistributedLock(30000);
       try {
         return await this.runWithRetry(() => {
           if (!this.db || !this.db.open) throw new Error('БД не подключена');
@@ -305,9 +502,9 @@ class SQLiteDatabaseManager {
             const tx = this.db.transaction(() => {
               return operation();
             });
-            result = tx.immediate();
+            result = tx();
           } else {
-            this.db.exec('BEGIN IMMEDIATE;');
+            this.db.exec('BEGIN;');
             try {
               result = operation();
               this.db.exec('COMMIT;');
@@ -318,6 +515,21 @@ class SQLiteDatabaseManager {
           }
           return result;
         }, 15, 120);
+      } catch (directErr: any) {
+        const msg = String(directErr?.message || '');
+        const isLocked = msg.includes('database is locked') || msg.includes('SQLITE_BUSY') || msg.includes('cannot start a transaction');
+
+        // Автоматический fallback: если мы в режиме auto на сетевом диске и получили database is locked,
+        // бесшовно переключаемся в режим кэша с сетевой синхронизацией!
+        if (isLocked && this.syncMode === 'auto' && this.currentDbPath) {
+          const isNetwork = this.currentDbPath.startsWith('//') || this.currentDbPath.startsWith('\\\\') || this.currentDbPath.includes('/mnt/') || this.currentDbPath.includes('smb') || this.currentDbPath.includes('nfs');
+          if (isNetwork) {
+            logger.log('warn', 'db', 'Сетевой диск вызвал "database is locked". Автоматически активируем режим синхронизации кэша и повторяем запись...');
+            await this.connect(this.currentDbPath, 10000, 'cache_sync');
+            return await this.runWriteTransaction(operation);
+          }
+        }
+        throw directErr;
       } finally {
         releaseLock();
       }
@@ -329,9 +541,15 @@ class SQLiteDatabaseManager {
   }
 
   /**
-   * Создает резервную копию открытой базы данных через Online Backup API
+   * Создает резервную копию открытой базы данных
    */
   public async backupToFile(destinationPath: string): Promise<boolean> {
+    if (this.isUsingLocalCache && this.localWorkingPath && fs.existsSync(this.localWorkingPath)) {
+      try {
+        safeCopyFile(this.localWorkingPath, destinationPath);
+        return true;
+      } catch {}
+    }
     if (!this.db || !this.db.open) return false;
     try {
       if (typeof this.db.backup === 'function') {
@@ -347,7 +565,11 @@ class SQLiteDatabaseManager {
   /**
    * Инициализирует подключение к файлу .sqlite с защитой от ошибок блокировки на CIFS/SMB
    */
-  public async connect(dbPath: string, busyTimeout = 10000): Promise<{ success: boolean; message: string }> {
+  public async connect(
+    dbPath: string,
+    busyTimeout = 10000,
+    requestedSyncMode?: 'auto' | 'direct' | 'cache_sync'
+  ): Promise<{ success: boolean; message: string; isUsingLocalCache?: boolean }> {
     try {
       const accessCheck = await this.checkPathAccessibility(dbPath);
       if (!accessCheck.accessible) {
@@ -355,39 +577,20 @@ class SQLiteDatabaseManager {
         return { success: false, message: `Сетевой путь недоступен: ${accessCheck.error}` };
       }
 
+      this.syncMode = requestedSyncMode || store.getDbConfig().syncMode || 'auto';
       const effectiveTimeout = Math.max(Number(busyTimeout) || 10000, 10000);
+      const isNetwork = dbPath.startsWith('//') || dbPath.startsWith('\\\\') || dbPath.includes('/mnt/') || dbPath.includes('smb') || dbPath.includes('nfs');
+      const mountCheck = this.checkLinuxMountOptions(dbPath);
 
-      // Если соединение уже открыто к этому же пути, не переоткрываем его заново
-      if (this.currentDbPath === dbPath && this.db && this.db.open) {
-        try {
-          this.db.pragma(`busy_timeout = ${effectiveTimeout}`);
-        } catch {}
-        await this.ensureSchema();
-        logger.log('info', 'db', `База данных уже открыта (${dbPath}), параметры таймаута обновлены (${effectiveTimeout}мс)`);
-        return { success: true, message: 'База данных успешно подключена и инициализирована' };
-      }
-
-      // Если было открыто другое соединение, аккуратно закрываем его
-      if (this.db) {
-        try {
-          if (this.db.open) {
-            this.db.close();
-          }
-        } catch (closeErr: any) {
-          logger.log('warn', 'db', `Предупреждение при закрытии предыдущего соединения: ${closeErr.message}`);
-        } finally {
-          this.db = null;
-        }
-        // Небольшая пауза для освобождения файлового дескриптора ядром Linux / CIFS
-        await new Promise((resolve) => setTimeout(resolve, 80));
-      }
+      // Закрываем предыдущее соединение
+      this.close();
+      await new Promise((resolve) => setTimeout(resolve, 80));
 
       if (!DatabaseConstructor) {
         try {
           const r = getRequire();
           if (r) {
             const Candidate = r('better-sqlite3');
-            // Проверяем возможность инстанцирования в текущем рантайме (проверка ABI Node.js / Electron)
             const probe = new Candidate(':memory:');
             probe.close();
             DatabaseConstructor = Candidate;
@@ -399,7 +602,89 @@ class SQLiteDatabaseManager {
         }
       }
 
-      // Проверяем, существует ли файл и не является ли он нулевого размера
+      // Определяем, требуется ли режим локального кэша с сетевой синхронизацией
+      let shouldUseLocalCache = false;
+      if (this.syncMode === 'cache_sync') {
+        shouldUseLocalCache = true;
+      } else if (this.syncMode === 'auto' && isNetwork) {
+        if (mountCheck.isCifs && !mountCheck.hasNobrl) {
+          shouldUseLocalCache = true;
+          logger.log('info', 'db', 'Обнаружен сетевой ресурс CIFS без опции nobrl. Автоматически активирован режим сетевой синхронизации локального кэша.');
+        }
+      }
+
+      // 1. РЕЖИМ ЛОКАЛЬНОГО КЭША С СЕТЕВОЙ СИНХРОНИЗАЦИЕЙ (для CIFS без nobrl в Astra Linux 1.7)
+      if (shouldUseLocalCache && isNetwork) {
+        this.isUsingLocalCache = true;
+        this.networkMasterPath = dbPath;
+        this.currentDbPath = dbPath;
+
+        const userData = app?.getPath ? app.getPath('userData') : os.tmpdir();
+        const cacheDir = path.join(userData, 'docflow_cifs_cache');
+        if (!fs.existsSync(cacheDir)) {
+          fs.mkdirSync(cacheDir, { recursive: true });
+        }
+        this.localWorkingPath = path.join(cacheDir, 'local_working_db.sqlite');
+
+        const masterExists = fs.existsSync(this.networkMasterPath);
+        let masterSize = 0;
+        if (masterExists) {
+          try {
+            const st = fs.statSync(this.networkMasterPath);
+            masterSize = st.size;
+            this.lastNetworkSyncMtime = st.mtimeMs;
+          } catch {}
+        }
+
+        if (masterExists && masterSize > 0) {
+          logger.log('info', 'db', `Синхронизация сетевого файла в локальный кэш: ${this.networkMasterPath} -> ${this.localWorkingPath}`);
+          safeCopyFile(this.networkMasterPath, this.localWorkingPath);
+        } else {
+          logger.log('info', 'db', `Создание новой базы данных в кэше и экспорт на сетевой диск: ${this.networkMasterPath}`);
+          if (fs.existsSync(this.localWorkingPath)) {
+            try { fs.unlinkSync(this.localWorkingPath); } catch {}
+          }
+          const tempDb = new DatabaseConstructor(this.localWorkingPath, { timeout: 10000 });
+          try {
+            tempDb.pragma('journal_mode = MEMORY');
+            tempDb.pragma('synchronous = NORMAL');
+            tempDb.pragma('foreign_keys = ON');
+            tempDb.pragma('temp_store = MEMORY');
+            this.populateFullSchemaAndDefaults(tempDb);
+          } finally {
+            try { tempDb.close(); } catch {}
+          }
+          safeCopyFile(this.localWorkingPath, this.networkMasterPath);
+          if (fs.existsSync(this.networkMasterPath)) {
+            try { this.lastNetworkSyncMtime = fs.statSync(this.networkMasterPath).mtimeMs; } catch {}
+          }
+        }
+
+        // Открываем локальный кэш (на локальной файловой системе ext4 без блокировок CIFS)
+        this.db = new DatabaseConstructor(this.localWorkingPath, {
+          timeout: 10000,
+          verbose: (msg: string) => {
+            if (process.env.DEBUG_SQL) console.log(`[SQL-Cache]: ${msg}`);
+          },
+        });
+        try {
+          this.db.pragma('journal_mode = MEMORY');
+          this.db.pragma('synchronous = NORMAL');
+          this.db.pragma('foreign_keys = ON');
+          this.db.pragma('temp_store = MEMORY');
+          this.db.pragma('busy_timeout = 10000');
+        } catch {}
+
+        await this.ensureSchema();
+        logger.log('info', 'db', `База данных подключена в режиме сетевой синхронизации (Кэш: ${this.localWorkingPath}, Мастер: ${this.networkMasterPath})`);
+        return { success: true, message: 'База данных успешно подключена (режим сетевой синхронизации кэша)', isUsingLocalCache: true };
+      }
+
+      // 2. ПРЯМОЙ РЕЖИМ (локальный файл или CIFS с nobrl)
+      this.isUsingLocalCache = false;
+      this.networkMasterPath = '';
+      this.localWorkingPath = '';
+
       const fileExists = fs.existsSync(dbPath);
       let isZeroByte = false;
       if (fileExists) {
@@ -409,23 +694,9 @@ class SQLiteDatabaseManager {
         } catch {}
       }
 
-      /**
-       * ВАЖНО ДЛЯ ASTRA LINUX 1.7 И СЕТЕВЫХ РЕСУРСОВ CIFS/SMB:
-       * Если файл отсутствует или имеет нулевой размер, инициализация схемы прямо через
-       * сетевое подключение CIFS вызывает ошибку "database is locked" из-за несовместимости
-       * POSIX lock promotion (апгрейда блокировки SHARED -> EXCLUSIVE) в сетевой файловой системе.
-       * 
-       * РЕШЕНИЕ: Мы атомарно создаем и наполняем базу данных на локальном диске (в os.tmpdir()),
-       * закрываем соединение и копируем готовый полноценный файл .sqlite на сетевой диск.
-       */
       if (!fileExists || isZeroByte) {
-        logger.log('info', 'db', `Файл БД ${dbPath} ${!fileExists ? 'отсутствует' : 'имеет нулевой размер'}. Выполняем атомарную локальную инициализацию схемы...`);
-
-        const tempFile = path.join(
-          os.tmpdir(),
-          `init_docflow_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.sqlite`
-        );
-
+        logger.log('info', 'db', `Файл БД ${dbPath} ${!fileExists ? 'отсутствует' : 'пустой'}. Выполняем локальную инициализацию схемы...`);
+        const tempFile = path.join(os.tmpdir(), `init_docflow_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.sqlite`);
         try {
           const tempDb = new DatabaseConstructor(tempFile, { timeout: 10000 });
           try {
@@ -434,59 +705,29 @@ class SQLiteDatabaseManager {
             tempDb.pragma('foreign_keys = ON');
             tempDb.pragma('temp_store = MEMORY');
           } catch {}
-
-          // Заполняем схему и базовые справочники локально без сетевых задержек
           this.populateFullSchemaAndDefaults(tempDb);
           tempDb.close();
 
-          // Если на сетевом пути уже был файл нулевого размера, удаляем его
           if (isZeroByte && fs.existsSync(dbPath)) {
-            try {
-              fs.unlinkSync(dbPath);
-            } catch (unlinkErr: any) {
-              logger.log('warn', 'db', `Предупреждение при удалении 0-байтового файла: ${unlinkErr.message}`);
-            }
+            try { fs.unlinkSync(dbPath); } catch {}
           }
-
-          // Копируем готовый файл базы данных на целевой диск без вызова fchmod
-          try {
-            safeCopyFile(tempFile, dbPath);
-            logger.log('info', 'db', `Инициализированный файл БД успешно скопирован в: ${dbPath}`);
-          } catch (copyErr: any) {
-            logger.log('warn', 'db', `Не удалось скопировать временный файл (${copyErr.message}), выполняем прямую инициализацию на носителе...`);
-            const directDb = new DatabaseConstructor(dbPath, { timeout: effectiveTimeout });
-            try {
-              directDb.pragma('journal_mode = MEMORY');
-              directDb.pragma('synchronous = NORMAL');
-              directDb.pragma('foreign_keys = ON');
-              directDb.pragma('temp_store = MEMORY');
-              this.populateFullSchemaAndDefaults(directDb);
-            } finally {
-              try { directDb.close(); } catch {}
-            }
-          }
+          safeCopyFile(tempFile, dbPath);
         } finally {
-          try {
-            if (fs.existsSync(tempFile)) {
-              fs.unlinkSync(tempFile);
-            }
-          } catch {}
+          try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch {}
         }
       }
 
-      // Очистка зависших журналов предыдущих аварийно завершенных процессов на сетевой шаре
+      // Очистка зависших журналов
       const staleJournal = `${dbPath}-journal`;
       if (fs.existsSync(staleJournal)) {
         try {
           const st = fs.statSync(staleJournal);
           if (st.size === 0 || Date.now() - st.mtimeMs > 15000) {
-            logger.log('warn', 'db', `Очистка неактивного файла журнала: ${staleJournal}`);
             fs.unlinkSync(staleJournal);
           }
         } catch {}
       }
 
-      // Открываем сетевую базу данных с настроенным timeout ожидания блокировок
       this.db = new DatabaseConstructor(dbPath, {
         timeout: Math.max(effectiveTimeout, 30000),
         verbose: (msg: string) => {
@@ -494,57 +735,23 @@ class SQLiteDatabaseManager {
         },
       });
 
-      // 1. Устанавливаем busy_timeout для 6-10 одновременных сетевых пользователей (30000+ мс)
       try {
         this.db.pragma(`busy_timeout = ${Math.max(effectiveTimeout, 30000)}`);
-      } catch {}
-
-      // 2. synchronous = NORMAL для стабильного сетевого I/O
-      try {
         this.db.pragma('synchronous = NORMAL');
-      } catch {}
-
-      // 3. foreign_keys = ON
-      try {
         this.db.pragma('foreign_keys = ON');
-      } catch {}
-
-      // 4. temp_store = MEMORY (хранить временные структуры в RAM, а не на сетевом диске)
-      try {
         this.db.pragma('temp_store = MEMORY');
-      } catch {}
-
-      // 5. cache_size = -32000 (32MB памяти под кэш страниц SQLite)
-      try {
         this.db.pragma('cache_size = -32000');
-      } catch {}
-
-      // 6. locking_mode = NORMAL (своевременное снятие блокировок после коммита транзакций)
-      try {
         this.db.pragma('locking_mode = NORMAL');
-      } catch {}
-
-      // 7. journal_mode = MEMORY
-      // КРИТИЧНО ДЛЯ ASTRA LINUX 1.7 И СЕТЕВЫХ ШАР CIFS/SMB:
-      // В режиме MEMORY журнал отката транзакций хранится в оперативной памяти процесса.
-      // На сетевой файловой системе CIFS не создается файл *.sqlite-journal, не выполняется
-      // ftruncate(0) и исключаются коллизии блокировок дескрипторов (database is locked).
-      try {
         this.db.pragma('journal_mode = MEMORY');
-      } catch (journalErr: any) {
-        logger.log('warn', 'db', `Предупреждение journal_mode: ${journalErr.message}`);
+      } catch (err: any) {
+        logger.log('warn', 'db', `Предупреждение установки pragma: ${err.message}`);
       }
 
-      // Проверка монтирования на Linux (Astra Linux 1.7 CIFS)
-      this.checkLinuxMountOptions(dbPath);
-
       this.currentDbPath = dbPath;
-
-      // Проверяем схему и наличие колонок (без конфликтов блокировок)
       await this.ensureSchema();
 
-      logger.log('info', 'db', `Подключение к БД успешно установлено (busy_timeout=${Math.max(effectiveTimeout, 30000)}ms, journal_mode=MEMORY, sync=NORMAL)`);
-      return { success: true, message: 'База данных успешно подключена и инициализирована' };
+      logger.log('info', 'db', `Подключение к БД успешно установлено в прямом режиме (busy_timeout=${Math.max(effectiveTimeout, 30000)}ms, journal_mode=MEMORY)`);
+      return { success: true, message: 'База данных успешно подключена и инициализирована', isUsingLocalCache: false };
     } catch (err: any) {
       logger.log('error', 'db', `Ошибка подключения к SQLite: ${err.message}`, err);
       return { success: false, message: `Ошибка подключения: ${err.message}` };
@@ -1135,6 +1342,49 @@ class SQLiteDatabaseManager {
       this.db.prepare('DELETE FROM documents WHERE id = ?').run(id);
       return { success: true };
     });
+  }
+
+  public async syncFromNetworkIfNeeded(): Promise<{ changed: boolean }> {
+    if (!this.isUsingLocalCache || !this.networkMasterPath || !fs.existsSync(this.networkMasterPath)) {
+      return { changed: false };
+    }
+    try {
+      const netStat = fs.statSync(this.networkMasterPath);
+      if (netStat.mtimeMs > this.lastNetworkSyncMtime + 100) {
+        logger.log('info', 'db', 'Обнаружены изменения базы данных на сетевом диске, синхронизируем локальный кэш...');
+        if (this.db && this.db.open) {
+          try { this.db.close(); } catch {}
+        }
+        safeCopyFile(this.networkMasterPath, this.localWorkingPath);
+        this.db = new DatabaseConstructor(this.localWorkingPath, { timeout: 10000 });
+        this.db.pragma('journal_mode = MEMORY');
+        this.db.pragma('synchronous = NORMAL');
+        this.db.pragma('foreign_keys = ON');
+        this.db.pragma('temp_store = MEMORY');
+        this.lastNetworkSyncMtime = netStat.mtimeMs;
+        return { changed: true };
+      }
+    } catch (e: any) {
+      logger.log('warn', 'db', `Ошибка фоновой синхронизации: ${e.message}`);
+    }
+    return { changed: false };
+  }
+
+  public getStatus(): {
+    isUsingLocalCache: boolean;
+    syncMode: 'auto' | 'direct' | 'cache_sync';
+    hasNobrl: boolean;
+    isCifs: boolean;
+    mountWarning?: string;
+  } {
+    const mountCheck = this.checkLinuxMountOptions(this.currentDbPath);
+    return {
+      isUsingLocalCache: this.isUsingLocalCache,
+      syncMode: this.syncMode,
+      hasNobrl: mountCheck.hasNobrl,
+      isCifs: mountCheck.isCifs,
+      mountWarning: mountCheck.warning,
+    };
   }
 
   public getCurrentDbPath(): string {

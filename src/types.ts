@@ -87,6 +87,8 @@ export interface DatabaseConfig {
   isNetworkPath: boolean;
   isAccessible: boolean;
   lastConnected?: string;
+  syncMode?: 'auto' | 'direct' | 'cache_sync';
+  isUsingLocalCache?: boolean;
 }
 
 export interface DbStatus {
@@ -96,6 +98,9 @@ export interface DbStatus {
   path: string;
   busyTimeout: number;
   mountWarning?: string;
+  isUsingLocalCache?: boolean;
+  syncMode?: 'auto' | 'direct' | 'cache_sync';
+  hasNobrl?: boolean;
 }
 
 export interface BackupFileInfo {
@@ -145,7 +150,17 @@ export interface ElectronAPI {
   getDbStatus: () => Promise<DbStatus>;
   setDbPath: (path: string) => Promise<{ success: boolean; message: string; config?: DatabaseConfig }>;
   saveDbConfig: (config: Partial<DatabaseConfig>) => Promise<{ success: boolean; message: string; config?: DatabaseConfig }>;
-  testDbConnection: (path?: string) => Promise<{ success: boolean; message: string; isNetwork?: boolean; pingMs?: number }>;
+  testDbConnection: (path?: string) => Promise<{
+    success: boolean;
+    message: string;
+    isNetwork?: boolean;
+    pingMs?: number;
+    hasNobrl?: boolean;
+    isCifs?: boolean;
+    writeLockOk?: boolean;
+    mountWarning?: string;
+    recommendedMode?: 'direct' | 'cache_sync';
+  }>;
   refreshDb: () => Promise<{ success: boolean; timestamp: string }>;
   
   // Справочники
