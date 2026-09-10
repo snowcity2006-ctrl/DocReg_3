@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Building2, X, Check, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Organization } from '../../types';
 
@@ -47,6 +47,13 @@ export const OrganizationModal: React.FC<OrganizationModalProps> = ({
     (o) => o.id !== initialData?.id && o.name.trim().toLowerCase() === normalizedName
   );
   const isDuplicate = Boolean(normalizedName && duplicateOrg);
+
+  // Список организаций, отображаемых в блоке:
+  // По мере набора названия скрываются все организации, не соответствующие вводимому тексту
+  const visibleOrganizations = useMemo(() => {
+    if (!normalizedName) return orgList;
+    return orgList.filter((o) => o.name.trim().toLowerCase().includes(normalizedName));
+  }, [orgList, normalizedName]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -177,7 +184,9 @@ export const OrganizationModal: React.FC<OrganizationModalProps> = ({
                 </span>
               </div>
               <span className="text-[11px] px-2 py-0.5 bg-blue-950/80 text-blue-400 border border-blue-900/60 rounded-md font-medium">
-                Всего в базе: {orgList.length}
+                {normalizedName
+                  ? `Найдено: ${visibleOrganizations.length} из ${orgList.length}`
+                  : `Всего в базе: ${orgList.length}`}
               </span>
             </div>
 
@@ -185,10 +194,17 @@ export const OrganizationModal: React.FC<OrganizationModalProps> = ({
               <div className="text-xs text-gray-500 italic py-1">
                 В справочнике пока нет зарегистрированных организаций.
               </div>
+            ) : visibleOrganizations.length === 0 ? (
+              <div className="p-2.5 bg-emerald-950/20 border border-emerald-900/40 rounded-lg text-xs text-emerald-300 flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>
+                  Организаций, содержащих «<strong>{name.trim()}</strong>», в базе не найдено.
+                </span>
+              </div>
             ) : (
               <div className="space-y-1.5">
                 <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
-                  {orgList.map((o) => {
+                  {visibleOrganizations.map((o) => {
                     const isExactMatch = normalizedName && o.name.trim().toLowerCase() === normalizedName;
                     const isPartialMatch =
                       normalizedName &&

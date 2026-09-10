@@ -38,6 +38,7 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [hasUserTyped, setHasUserTyped] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -51,6 +52,7 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
   useEffect(() => {
     if (!isOpen) {
       setQuery(selectedOption ? selectedOption.label : '');
+      setHasUserTyped(false);
     }
   }, [value, selectedOption, isOpen]);
 
@@ -59,16 +61,30 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
-        // Восстанавливаем отображение выбранного значения
-        setQuery(selectedOption ? selectedOption.label : '');
+        // Если введенный текст точно совпадает с одной из опций, выбираем её
+        if (hasUserTyped && query.trim()) {
+          const exactMatch = options.find((opt) => opt.label.trim().toLowerCase() === query.trim().toLowerCase());
+          if (exactMatch) {
+            onChange(exactMatch.id);
+            setQuery(exactMatch.label);
+          } else {
+            // Восстанавливаем отображение выбранного значения
+            setQuery(selectedOption ? selectedOption.label : '');
+          }
+        } else {
+          setQuery(selectedOption ? selectedOption.label : '');
+        }
+        setHasUserTyped(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [selectedOption]);
+  }, [selectedOption, hasUserTyped, query, options, onChange]);
 
-  // Фильтрация опций по введенному тексту (регистронезависимо)
+  // Фильтрация опций по введенному тексту (регистронезависимо):
+  // По мере набора скрываются все опции, не содержащие введенный текст
   const filteredOptions = options.filter((opt) => {
+    if (!hasUserTyped) return true;
     if (!query.trim()) return true;
     const q = query.trim().toLowerCase();
     const labelMatch = opt.label.toLowerCase().includes(q);
@@ -91,6 +107,7 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
   const handleSelectOption = (opt: ComboboxOption) => {
     onChange(opt.id);
     setQuery(opt.label);
+    setHasUserTyped(false);
     setIsOpen(false);
     setHighlightedIndex(-1);
   };
@@ -99,7 +116,8 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
     e.stopPropagation();
     onChange('');
     setQuery('');
-    setIsOpen(false);
+    setHasUserTyped(false);
+    setIsOpen(true);
     inputRef.current?.focus();
   };
 
@@ -132,13 +150,14 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
       }
     } else if (e.key === 'Escape') {
       setIsOpen(false);
+      setHasUserTyped(false);
       setQuery(selectedOption ? selectedOption.label : '');
     }
   };
 
   // Подсветка совпадений в тексте
   const renderHighlighted = (text: string, highlight: string) => {
-    if (!highlight.trim()) return text;
+    if (!hasUserTyped || !highlight.trim()) return text;
     const parts = text.split(new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
     return parts.map((part, i) =>
       part.toLowerCase() === highlight.toLowerCase() ? (
@@ -177,9 +196,13 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
             onFocus={() => {
               setIsOpen(true);
               setHighlightedIndex(-1);
+              setTimeout(() => {
+                inputRef.current?.select();
+              }, 20);
             }}
             onChange={(e) => {
               setQuery(e.target.value);
+              setHasUserTyped(true);
               setIsOpen(true);
               setHighlightedIndex(0);
             }}
@@ -205,8 +228,11 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
               onClick={(e) => {
                 e.stopPropagation();
                 if (!disabled) {
-                  setIsOpen(!isOpen);
-                  if (!isOpen) inputRef.current?.focus();
+                  const nextOpen = !isOpen;
+                  setIsOpen(nextOpen);
+                  if (nextOpen) {
+                    inputRef.current?.focus();
+                  }
                 }
               }}
               className="p-1 text-gray-400 hover:text-gray-200 transition-transform"
@@ -235,7 +261,7 @@ export const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
           ref={listRef}
           className="absolute left-0 right-0 top-full mt-1 z-50 bg-[#1F222B] border border-[#2D3139] rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150 max-h-60 overflow-y-auto"
         >
-          {query.trim() && (
+          {hasUserTyped && query.trim() && (
             <div className="px-3 py-1.5 bg-[#171A21] border-b border-[#2D3139] text-[11px] text-gray-400 flex items-center justify-between">
               <span className="flex items-center gap-1">
                 <Search className="w-3 h-3 text-blue-400" />

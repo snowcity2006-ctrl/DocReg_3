@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Network, X, Check, AlertCircle, AlertTriangle, Plus, Building2 } from 'lucide-react';
 import { Department, Organization } from '../../types';
+import { SearchableCombobox, ComboboxOption } from '../documents/SearchableCombobox';
 
 interface DepartmentModalProps {
   isOpen: boolean;
@@ -45,6 +46,14 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({
     }
     setError(null);
   }, [initialData, isOpen, organizations, defaultOrganizationId]);
+
+  const orgOptions: ComboboxOption[] = useMemo(() => {
+    return organizations.map((org) => ({
+      id: org.id,
+      label: org.name,
+      searchStr: org.name,
+    }));
+  }, [organizations]);
 
   const selectedOrg = organizations.find((o) => o.id === Number(organizationId));
   
@@ -187,38 +196,25 @@ export const DepartmentModal: React.FC<DepartmentModalProps> = ({
             </div>
           )}
 
-          {/* Организация с иконкой '+' справа */}
+          {/* Организация с клавиатурным вводом, поиском и кнопкой добавления новой организации */}
           <div>
             <label className="block text-xs font-semibold text-gray-300 mb-1.5">
               Организация <span className="text-rose-500">*</span>
             </label>
-            <div className="flex gap-2">
-              <select
-                required
-                value={organizationId}
-                onChange={(e) => {
-                  setOrganizationId(e.target.value ? Number(e.target.value) : '');
-                  if (error) setError(null);
-                }}
-                className="flex-1 px-3.5 py-2.5 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs text-[#E0E0E0] focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="" className="bg-[#171A21] text-gray-400">-- Выберите организацию --</option>
-                {organizations.map((org) => (
-                  <option key={org.id} value={org.id} className="bg-[#171A21] text-[#E0E0E0]">
-                    {org.name}
-                  </option>
-                ))}
-              </select>
-
-              <button
-                type="button"
-                onClick={onOpenNewOrgModal}
-                title="Добавить новую организацию в справочник"
-                className="p-2.5 bg-blue-950/80 hover:bg-blue-900 text-blue-400 rounded-xl border border-blue-800 transition-colors cursor-pointer flex items-center justify-center shrink-0"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-            </div>
+            <SearchableCombobox
+              id="department-modal-organization"
+              options={orgOptions}
+              value={organizationId}
+              onChange={(newVal) => {
+                setOrganizationId(newVal);
+                if (error) setError(null);
+              }}
+              placeholder="-- Начните ввод названия или выберите организацию --"
+              emptyMessage="Организации не найдены"
+              onAddNew={onOpenNewOrgModal}
+              addNewTitle="Добавить новую организацию в справочник"
+              icon={<Building2 className="w-4 h-4" />}
+            />
           </div>
 
           <div>
