@@ -133,6 +133,105 @@ html:not(.dark) .hover\:text-\[\#E0E0E0\]:hover {
   color: #0f172a !important;
 }
 
+/* Шапка таблицы зарегистрированных документов: цвет заливки как у элемента "+ Регистрация документа" (#2563eb / bg-blue-600) */
+#document-table-header,
+html:not(.dark) #document-table-header {
+  background-color: #2563eb !important;
+}
+
+#document-table-title,
+html:not(.dark) #document-table-title {
+  color: #ffffff !important;
+}
+
+/* ==========================================================================
+   Шрифт и оформление табличных частей форм в светлой теме (Light Mode Tables):
+   Глубокий четкий темный шрифт (#0f172a / #1e293b), четкие заголовки,
+   повышенная контрастность текста в ячейках, строках, шапках и полях форм.
+   ========================================================================== */
+html:not(.dark) table {
+  color: #0f172a !important;
+}
+
+html:not(.dark) table thead,
+html:not(.dark) table thead tr,
+html:not(.dark) table th {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+  font-weight: 700 !important;
+}
+
+html:not(.dark) table th span,
+html:not(.dark) table th div,
+html:not(.dark) table th p {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+html:not(.dark) table tbody {
+  color: #0f172a !important;
+}
+
+html:not(.dark) table tbody tr {
+  background-color: #ffffff;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+html:not(.dark) table tbody tr:hover {
+  background-color: #f8fafc !important;
+}
+
+html:not(.dark) table td {
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+html:not(.dark) table td span,
+html:not(.dark) table td div,
+html:not(.dark) table td p {
+  color: #0f172a;
+}
+
+html:not(.dark) table td .text-gray-300,
+html:not(.dark) table td .text-gray-400,
+html:not(.dark) table td span.text-gray-300,
+html:not(.dark) table td span.text-gray-400 {
+  color: #1e293b !important;
+  font-weight: 500;
+}
+
+html:not(.dark) table td .font-mono {
+  color: #0f172a !important;
+  font-weight: 600;
+}
+
+html:not(.dark) table td .text-gray-500,
+html:not(.dark) table td span.text-gray-500 {
+  color: #475569 !important;
+  font-weight: 500;
+}
+
+html:not(.dark) table td.sticky,
+html:not(.dark) table th.sticky {
+  background-color: #ffffff !important;
+}
+
+html:not(.dark) table thead th.sticky {
+  background-color: #f1f5f9 !important;
+}
+
+html:not(.dark) table tbody tr:hover td.sticky {
+  background-color: #f8fafc !important;
+}
+
+/* Формы, поля ввода, выпадающие списки и метки в светлой теме */
+html:not(.dark) label {
+  color: #1e293b !important;
+  font-weight: 600;
+}
+
 /* Light mode badge and alert styling */
 html:not(.dark) [class*="bg-blue-950"] {
   background-color: #eff6ff !important;

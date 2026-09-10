@@ -147,26 +147,27 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
       const saved = localStorage.getItem('docflow_table_width');
       if (saved) {
         const val = Number(saved);
-        if (!isNaN(val) && val >= 600 && val <= 3500) return val;
+        if (!isNaN(val) && val >= 380 && val <= 4000) return val;
       }
     } catch {}
     return null;
   });
 
   const [isMaximized, setIsMaximized] = useState(false);
-  const [isResizingTable, setIsResizingTable] = useState<'bottom' | 'right' | 'corner' | null>(null);
+  const [isResizingTable, setIsResizingTable] = useState<'bottom' | 'right' | 'left' | 'corner-se' | 'corner-sw' | null>(null);
   const [liveDimensions, setLiveDimensions] = useState<{ width: number; height: number } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const resizingTable = useRef<{
-    edge: 'bottom' | 'right' | 'corner';
+    edge: 'bottom' | 'right' | 'left' | 'corner-se' | 'corner-sw';
     startX: number;
     startY: number;
     startWidth: number;
     startHeight: number;
+    startColWidths: Record<string, number>;
   } | null>(null);
 
-  const startResizingTable = (edge: 'bottom' | 'right' | 'corner', e: React.MouseEvent) => {
+  const startResizingTable = (edge: 'bottom' | 'right' | 'left' | 'corner-se' | 'corner-sw', e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (isMaximized || !containerRef.current) return;
@@ -178,32 +179,75 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
       startY: e.clientY,
       startWidth: rect.width,
       startHeight: rect.height,
+      startColWidths: { ...colWidths },
     };
     setIsResizingTable(edge);
     setLiveDimensions({ width: Math.round(rect.width), height: Math.round(rect.height) });
 
     const handleTableMouseMove = (moveEvent: MouseEvent) => {
       if (!resizingTable.current) return;
-      const { edge: currentEdge, startX, startY, startWidth, startHeight } = resizingTable.current;
+      const { edge: currentEdge, startX, startY, startWidth, startHeight, startColWidths } = resizingTable.current;
 
       let newHeight = startHeight;
       let newWidth = startWidth;
 
-      if (currentEdge === 'bottom' || currentEdge === 'corner') {
+      // Масштабирование по высоте (вверх — в меньшую сторону, вниз — в большую сторону)
+      if (currentEdge === 'bottom' || currentEdge === 'corner-se' || currentEdge === 'corner-sw') {
         const deltaY = moveEvent.clientY - startY;
-        newHeight = Math.max(260, Math.min(window.innerHeight - 60, startHeight + deltaY));
+        newHeight = Math.max(180, Math.min(window.innerHeight - 40, startHeight + deltaY));
         setTableHeight(newHeight);
         try {
           localStorage.setItem('docflow_table_height', String(Math.round(newHeight)));
         } catch {}
       }
 
-      if (currentEdge === 'right' || currentEdge === 'corner') {
+      // Масштабирование по ширине с правой стороны или правого угла (влево — меньше, вправо — больше)
+      if (currentEdge === 'right' || currentEdge === 'corner-se') {
         const deltaX = moveEvent.clientX - startX;
-        newWidth = Math.max(650, Math.min(window.innerWidth - 32, startWidth + deltaX));
+        const minW = 380;
+        const maxW = Math.max(window.innerWidth - 32, 3800);
+        newWidth = Math.max(minW, Math.min(maxW, startWidth + deltaX));
         setTableWidth(newWidth);
+
+        // Пропорциональное масштабирование ширины столбцов по ТЗ
+        const totalStartColW = Object.values(startColWidths).reduce((a, b) => a + b, 0) || startWidth;
+        const ratio = newWidth / totalStartColW;
+        const scaledColWidths: Record<string, number> = {};
+
+        for (const [key, initialW] of Object.entries(startColWidths)) {
+          scaledColWidths[key] = Math.max(24, Math.round(initialW * ratio));
+        }
+
+        setColWidths(scaledColWidths);
+
         try {
           localStorage.setItem('docflow_table_width', String(Math.round(newWidth)));
+          localStorage.setItem('sed_table_widths', JSON.stringify(scaledColWidths));
+        } catch {}
+      }
+
+      // Масштабирование по ширине с левой стороны или левого угла
+      if (currentEdge === 'left' || currentEdge === 'corner-sw') {
+        const deltaX = startX - moveEvent.clientX;
+        const minW = 380;
+        const maxW = Math.max(window.innerWidth - 32, 3800);
+        newWidth = Math.max(minW, Math.min(maxW, startWidth + deltaX));
+        setTableWidth(newWidth);
+
+        // Пропорциональное масштабирование ширины столбцов по ТЗ
+        const totalStartColW = Object.values(startColWidths).reduce((a, b) => a + b, 0) || startWidth;
+        const ratio = newWidth / totalStartColW;
+        const scaledColWidths: Record<string, number> = {};
+
+        for (const [key, initialW] of Object.entries(startColWidths)) {
+          scaledColWidths[key] = Math.max(24, Math.round(initialW * ratio));
+        }
+
+        setColWidths(scaledColWidths);
+
+        try {
+          localStorage.setItem('docflow_table_width', String(Math.round(newWidth)));
+          localStorage.setItem('sed_table_widths', JSON.stringify(scaledColWidths));
         } catch {}
       }
 
@@ -222,8 +266,9 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
 
     document.body.style.userSelect = 'none';
     if (edge === 'bottom') document.body.style.cursor = 'row-resize';
-    else if (edge === 'right') document.body.style.cursor = 'col-resize';
-    else if (edge === 'corner') document.body.style.cursor = 'se-resize';
+    else if (edge === 'right' || edge === 'left') document.body.style.cursor = 'col-resize';
+    else if (edge === 'corner-se') document.body.style.cursor = 'se-resize';
+    else if (edge === 'corner-sw') document.body.style.cursor = 'sw-resize';
 
     document.addEventListener('mousemove', handleTableMouseMove);
     document.addEventListener('mouseup', handleTableMouseUp);
@@ -232,18 +277,12 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
   const resetTableDimensions = () => {
     setTableHeight(DEFAULT_TABLE_HEIGHT);
     setTableWidth(null);
+    setColWidths(defaultColWidths);
     setIsMaximized(false);
     try {
       localStorage.removeItem('docflow_table_height');
       localStorage.removeItem('docflow_table_width');
-    } catch {}
-  };
-
-  const setHeightPreset = (h: number) => {
-    setIsMaximized(false);
-    setTableHeight(h);
-    try {
-      localStorage.setItem('docflow_table_height', String(h));
+      localStorage.removeItem('sed_table_widths');
     } catch {}
   };
 
@@ -345,88 +384,50 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
             ? undefined
             : {
                 height: `${tableHeight}px`,
-                width: tableWidth ? `${tableWidth}px` : undefined,
-                maxWidth: '100%',
+                width: tableWidth ? `${tableWidth}px` : '100%',
+                maxWidth: 'calc(100vw - 2rem)',
               }
         }
         className={`${
           isMaximized
             ? 'fixed inset-2 sm:inset-4 z-50 rounded-2xl shadow-2xl border border-blue-500/50'
             : 'relative rounded-2xl shadow-xl border border-[#2D3139]'
-        } bg-[#171A21] flex flex-col overflow-hidden text-[#E0E0E0] transition-all`}
+        } bg-[#171A21] flex flex-col overflow-hidden text-[#E0E0E0] ${
+          isResizingTable ? 'transition-none select-none' : 'transition-all'
+        }`}
       >
         {/* Шапка окна таблицы документов: заголовок, статистика и управление масштабированием */}
         <div
+          id="document-table-header"
           onDoubleClick={() => setIsMaximized((prev) => !prev)}
           title="Двойной клик разворачивает окно таблицы на весь экран или восстанавливает исходный размер"
-          className="px-4 py-2.5 bg-[#12151B]/80 border-b border-[#2D3139] flex flex-wrap items-center justify-between gap-2 shrink-0 select-none cursor-default"
+          className="px-4 py-2.5 bg-blue-600 border-b border-blue-500/50 text-white flex flex-wrap items-center justify-between gap-2 shrink-0 select-none cursor-default"
         >
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-7 h-7 rounded-lg bg-blue-950/70 border border-blue-800/50 text-blue-400 flex items-center justify-center shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-blue-700/80 border border-blue-400/40 text-white flex items-center justify-center shrink-0 shadow-xs">
               <FileText className="w-3.5 h-3.5" />
             </div>
             <div className="flex items-center gap-2 min-w-0">
-              <h3 className="text-xs font-bold text-[#E0E0E0] tracking-wide uppercase truncate">
+              <h3
+                id="document-table-title"
+                className="text-xs font-bold text-white tracking-wide uppercase truncate"
+              >
                 Перечень зарегистрированных документов
               </h3>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-blue-950/80 text-blue-400 border border-blue-800/40 shrink-0">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-blue-700/80 text-white border border-blue-400/40 shrink-0">
                 {documents.length}
               </span>
             </div>
           </div>
 
           {/* Элементы управления масштабированием и размером окна таблицы */}
-          <div className="flex items-center gap-1.5 text-xs text-gray-400 shrink-0">
-            {/* Индикатор текущего размера */}
-            <span
-              className="text-[11px] font-mono text-gray-400 px-2 py-0.5 rounded bg-[#0F1115] border border-[#2D3139]"
-              title="Текущая высота окна таблицы (можно изменять мышкой, потянув за нижнюю границу)"
-            >
-              {isMaximized ? 'Во весь экран' : `${Math.round(tableHeight)} px`}
-            </span>
-
-            {/* Быстрые пресеты высоты */}
-            {!isMaximized && (
-              <div className="hidden sm:flex items-center gap-1 bg-[#0F1115] p-0.5 rounded-lg border border-[#2D3139]">
-                <button
-                  type="button"
-                  onClick={() => setHeightPreset(380)}
-                  title="Компактная высота (380px)"
-                  className={`px-2 py-0.5 rounded text-[11px] transition-colors cursor-pointer ${
-                    Math.round(tableHeight) === 380 ? 'bg-blue-600 text-white font-medium' : 'hover:text-[#E0E0E0]'
-                  }`}
-                >
-                  380
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setHeightPreset(540)}
-                  title="Стандартная высота (540px)"
-                  className={`px-2 py-0.5 rounded text-[11px] transition-colors cursor-pointer ${
-                    Math.round(tableHeight) === 540 ? 'bg-blue-600 text-white font-medium' : 'hover:text-[#E0E0E0]'
-                  }`}
-                >
-                  540
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setHeightPreset(750)}
-                  title="Высокая таблица (750px)"
-                  className={`px-2 py-0.5 rounded text-[11px] transition-colors cursor-pointer ${
-                    Math.round(tableHeight) === 750 ? 'bg-blue-600 text-white font-medium' : 'hover:text-[#E0E0E0]'
-                  }`}
-                >
-                  750
-                </button>
-              </div>
-            )}
-
+          <div className="flex items-center gap-1.5 text-xs text-blue-100 shrink-0">
             {/* Сброс размера */}
             <button
               type="button"
               onClick={resetTableDimensions}
-              title="Сбросить размеры окна таблицы к стандартным"
-              className="p-1.5 text-gray-400 hover:text-white hover:bg-[#1F222B] rounded-lg transition-colors cursor-pointer"
+              title="Сбросить размеры окна таблицы и ширину столбцов к стандартным"
+              className="p-1.5 text-blue-100 hover:text-white hover:bg-blue-700/80 rounded-lg transition-colors cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
@@ -436,29 +437,46 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
               type="button"
               onClick={() => setIsMaximized((prev) => !prev)}
               title={isMaximized ? 'Восстановить исходный размер' : 'Развернуть окно таблицы на весь экран'}
-              className="p-1.5 text-gray-400 hover:text-white hover:bg-[#1F222B] rounded-lg transition-colors cursor-pointer"
+              className="p-1.5 text-blue-100 hover:text-white hover:bg-blue-700/80 rounded-lg transition-colors cursor-pointer"
             >
               {isMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
             </button>
           </div>
         </div>
 
-        {/* Правая граница: масштабирование ширины окна таблицы мышкой */}
+        {/* Левая граница: масштабирование ширины окна таблицы мышкой */}
+        {!isMaximized && (
+          <div
+            onMouseDown={(e) => startResizingTable('left', e)}
+            className="absolute top-0 left-0 bottom-0 w-3.5 cursor-col-resize hover:bg-blue-500/25 active:bg-blue-500/40 transition-colors z-30 group flex items-center justify-center"
+            title="Потяните левую границу для изменения ширины окна таблицы в большую или меньшую сторону (столбцы масштабируются пропорционально)"
+          >
+            <div className="w-1 h-14 rounded-full bg-[#2D3139] group-hover:bg-blue-400 group-active:bg-blue-300 transition-colors" />
+          </div>
+        )}
+
+        {/* Правая граница: масштабирование ширины окна таблицы мышкой со столбцами */}
         {!isMaximized && (
           <div
             onMouseDown={(e) => startResizingTable('right', e)}
-            className="absolute top-0 right-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500/50 transition-colors z-30 group"
-            title="Потяните правую границу для изменения ширины окна таблицы"
+            className="absolute top-0 right-0 bottom-0 w-3.5 cursor-col-resize hover:bg-blue-500/25 active:bg-blue-500/40 transition-colors z-30 group flex items-center justify-center"
+            title="Потяните правую границу для изменения ширины окна таблицы в большую или меньшую сторону (столбцы масштабируются пропорционально)"
           >
-            <div className="w-0.5 h-full mx-auto group-hover:bg-blue-500" />
+            <div className="w-1 h-14 rounded-full bg-[#2D3139] group-hover:bg-blue-400 group-active:bg-blue-300 transition-colors" />
           </div>
         )}
 
         {/* Контейнер таблицы с горизонтальным и вертикальным скроллом */}
         <div className="overflow-auto flex-1 min-h-[160px]">
-          <table className="w-full text-left border-collapse text-xs select-none" style={{ tableLayout: 'fixed' }}>
+          <table
+            className="w-full text-left border-collapse text-xs select-none"
+            style={{
+              tableLayout: 'fixed',
+              minWidth: `${Object.values(colWidths).reduce((a, b) => a + b, 0)}px`,
+            }}
+          >
             <thead className="sticky top-0 z-20 bg-[#1F222B] shadow-xs">
-              <tr className="border-b border-[#2D3139] bg-[#1F222B] text-gray-400 font-semibold uppercase tracking-wider">
+              <tr className="border-b border-[#2D3139] bg-[#1F222B] text-slate-800 dark:text-gray-400 font-bold dark:font-semibold uppercase tracking-wider">
               
               {/* ID */}
               <th
@@ -679,48 +697,48 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
             </tr>
           </thead>
 
-          <tbody className="divide-y divide-[#2D3139] text-[#E0E0E0] font-medium">
+          <tbody className="divide-y divide-[#2D3139] text-slate-900 dark:text-[#E0E0E0] font-medium">
             {paginatedDocuments.map((doc) => (
               <tr
                 key={doc.id}
-                className="hover:bg-[#1F222B]/70 transition-colors group"
+                className="hover:bg-slate-100/80 dark:hover:bg-[#1F222B]/70 transition-colors group"
               >
                 {/* ID */}
-                <td className="py-2.5 px-3 font-mono text-gray-500 break-words">
+                <td className="py-2.5 px-3 font-mono font-semibold text-slate-700 dark:text-gray-500 break-words">
                   {doc.id}
                 </td>
 
                 {/* Тип документа */}
                 <td className="py-2.5 px-3">
-                  <span className="break-words leading-tight block text-gray-300">
+                  <span className="break-words leading-tight block text-slate-800 dark:text-gray-300 font-medium">
                     {doc.docTypeName || '—'}
                   </span>
                 </td>
 
                 {/* Направление */}
                 <td className="py-2.5 px-3">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 break-words whitespace-normal inline-block">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20 break-words whitespace-normal inline-block">
                     {doc.directionName || '—'}
                   </span>
                 </td>
 
                 {/* Исх.№ */}
-                <td className="py-2.5 px-3 font-mono text-gray-300 break-words">
+                <td className="py-2.5 px-3 font-mono font-semibold text-slate-900 dark:text-gray-300 break-words">
                   {doc.outgoingNumber || '—'}
                 </td>
 
                 {/* Исх.дата */}
-                <td className="py-2.5 px-3 font-mono text-gray-300 break-words">
+                <td className="py-2.5 px-3 font-mono text-slate-800 dark:text-gray-300 break-words">
                   {formatDateRussian(doc.outgoingDate)}
                 </td>
 
                 {/* Вх.№ */}
-                <td className="py-2.5 px-3 font-mono text-gray-300 break-words">
+                <td className="py-2.5 px-3 font-mono font-semibold text-slate-900 dark:text-gray-300 break-words">
                   {doc.incomingNumber || '—'}
                 </td>
 
                 {/* Вх.дата */}
-                <td className="py-2.5 px-3 font-mono text-gray-300 break-words">
+                <td className="py-2.5 px-3 font-mono text-slate-800 dark:text-gray-300 break-words">
                   {formatDateRussian(doc.incomingDate)}
                 </td>
 
@@ -728,7 +746,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 <td className="py-2.5 px-3">
                   <span
                     onClick={() => onView(doc)}
-                    className="font-semibold text-[#E0E0E0] hover:text-blue-500 dark:hover:text-blue-400 cursor-pointer break-words whitespace-normal leading-relaxed transition-colors block"
+                    className="font-bold text-slate-900 dark:text-[#E0E0E0] hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer break-words whitespace-normal leading-relaxed transition-colors block"
                     title={doc.subject}
                   >
                     {doc.subject}
@@ -736,23 +754,23 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </td>
 
                 {/* Отправитель */}
-                <td className="py-2.5 px-3 break-words whitespace-normal text-gray-300">
+                <td className="py-2.5 px-3 break-words whitespace-normal text-slate-800 dark:text-gray-300 font-medium">
                   <div>
                     <span className="break-words">{doc.senderName || '—'}</span>
                     {(doc.senderDepartmentName || doc.signatoryEmployeeName || doc.senderEmployeeName) && (
                       <div className="mt-1 flex flex-col gap-0.5 text-[10px]">
                         {doc.senderDepartmentName && (
-                          <span className="inline-flex items-center text-blue-400 break-words" title={`Подразделение: ${doc.senderDepartmentName}`}>
+                          <span className="inline-flex items-center text-blue-700 dark:text-blue-400 font-semibold break-words" title={`Подразделение: ${doc.senderDepartmentName}`}>
                             СП: {doc.senderDepartmentName}
                           </span>
                         )}
                         {doc.signatoryEmployeeName && (
-                          <span className="inline-flex items-center text-emerald-400/90 break-words font-medium" title={`Подписал: ${doc.signatoryEmployeeName}`}>
+                          <span className="inline-flex items-center text-emerald-700 dark:text-emerald-400/90 font-semibold break-words" title={`Подписал: ${doc.signatoryEmployeeName}`}>
                             Подписал: {doc.signatoryEmployeeName}
                           </span>
                         )}
                         {doc.senderEmployeeName && (
-                          <span className="inline-flex items-center text-gray-400 break-words" title={`Исполнитель: ${doc.senderEmployeeName}`}>
+                          <span className="inline-flex items-center text-slate-600 dark:text-gray-400 break-words" title={`Исполнитель: ${doc.senderEmployeeName}`}>
                             Исп: {doc.senderEmployeeName}
                           </span>
                         )}
@@ -762,12 +780,12 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </td>
 
                 {/* Получатель */}
-                <td className="py-2.5 px-3 break-words whitespace-normal text-gray-300">
+                <td className="py-2.5 px-3 break-words whitespace-normal text-slate-800 dark:text-gray-300 font-medium">
                   <div>
                     <span className="break-words">{doc.recipientName || '—'}</span>
                     {doc.recipientDepartmentNames && (
                       <div className="mt-1 flex flex-wrap gap-1">
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-950/60 text-indigo-300 border border-indigo-800/40 break-words">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800/40 break-words">
                           СП: {doc.recipientDepartmentNames}
                         </span>
                       </div>
@@ -787,19 +805,19 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                           type="button"
                           onClick={() => handleOpenFile(doc.filePath)}
                           title={`Открыть ${isFolder ? 'папку' : 'файл'}: ${doc.filePath}`}
-                          className={`inline-flex items-center gap-1.5 ${isFolder ? 'text-emerald-400 hover:text-emerald-300' : 'text-blue-400 hover:text-blue-300'} hover:underline max-w-full font-mono text-[11px] cursor-pointer break-all whitespace-normal text-left`}
+                          className={`inline-flex items-center gap-1.5 ${isFolder ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300' : 'text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300'} hover:underline max-w-full font-mono text-[11px] cursor-pointer break-all whitespace-normal text-left`}
                         >
                           {isFolder ? (
-                            <FolderOpen className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            <FolderOpen className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                           ) : (
-                            <FileText className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                            <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
                           )}
-                          <span className="break-all">{displayName}</span>
+                          <span className="break-all font-semibold">{displayName}</span>
                         </button>
                       );
                     })()
                   ) : (
-                    <span className="text-gray-500 text-[11px]">—</span>
+                    <span className="text-slate-400 dark:text-gray-500 text-[11px]">—</span>
                   )}
                 </td>
 
@@ -810,25 +828,25 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                       type="button"
                       onClick={() => handleOpenSed(doc.sedUrl)}
                       title={`Открыть карточку в СЭД: ${doc.sedUrl}`}
-                      className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 hover:underline font-mono text-[11px] cursor-pointer"
+                      className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline font-mono text-[11px] font-semibold cursor-pointer"
                     >
                       <Globe className="w-3.5 h-3.5 shrink-0" />
                       <span>В СЭД</span>
                       <ExternalLink className="w-2.5 h-2.5" />
                     </button>
                   ) : (
-                    <span className="text-gray-500 text-[11px]">—</span>
+                    <span className="text-slate-400 dark:text-gray-500 text-[11px]">—</span>
                   )}
                 </td>
 
                 {/* Действия */}
-                <td className="py-2.5 px-3 text-right sticky right-0 bg-[#171A21] group-hover:bg-[#1F222B] transition-colors">
+                <td className="py-2.5 px-3 text-right sticky right-0 bg-white dark:bg-[#171A21] group-hover:bg-slate-100 dark:group-hover:bg-[#1F222B] transition-colors">
                   <div className="flex items-center justify-end gap-1">
                     {/* Просмотр карточки документа */}
                     <button
                       onClick={() => onView(doc)}
                       title="Просмотр карточки документа"
-                      className="p-1.5 text-gray-400 hover:text-blue-400 hover:bg-[#2D3139] rounded-lg transition-colors cursor-pointer"
+                      className="p-1.5 text-slate-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-200 dark:hover:bg-[#2D3139] rounded-lg transition-colors cursor-pointer"
                     >
                       <Eye className="w-3.5 h-3.5" />
                     </button>
@@ -837,7 +855,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                     <button
                       onClick={() => onEdit(doc)}
                       title="Редактировать запись"
-                      className="p-1.5 text-gray-400 hover:text-blue-400 hover:bg-[#2D3139] rounded-lg transition-colors cursor-pointer"
+                      className="p-1.5 text-slate-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-200 dark:hover:bg-[#2D3139] rounded-lg transition-colors cursor-pointer"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
@@ -852,7 +870,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                         })
                       }
                       title="Удалить документ"
-                      className="p-1.5 text-gray-400 hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                      className="p-1.5 text-slate-500 dark:text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -938,33 +956,49 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
         </div>
       </div>
 
-      {/* Нижняя граница: удобная планка масштабирования высоты окна таблицы мышкой */}
+      {/* Нижняя граница: удобная планка масштабирования высоты окна таблицы мышкой (вверх — меньше, вниз — больше) */}
       {!isMaximized && (
         <div
           onMouseDown={(e) => startResizingTable('bottom', e)}
           onDoubleClick={() => setIsMaximized(true)}
-          title="Потяните для изменения высоты окна таблицы мышкой (двойной клик — во весь экран)"
-          className="h-3.5 w-full bg-[#12151B] hover:bg-blue-950/70 border-t border-[#2D3139] flex items-center justify-center cursor-row-resize transition-all select-none group shrink-0 relative"
+          title="Потяните вверх или вниз для изменения высоты окна таблицы мышкой (двойной клик — во весь экран)"
+          className="h-5.5 w-full bg-[#12151B] hover:bg-blue-950/70 active:bg-blue-900/80 border-t border-[#2D3139] flex items-center justify-center cursor-row-resize transition-all select-none group shrink-0 relative"
         >
-          <div className="w-28 h-1 rounded-full bg-[#2D3139] group-hover:bg-blue-500 transition-colors flex items-center justify-center">
+          {/* Левый угловой маркер масштабирования */}
+          <div
+            onMouseDown={(e) => startResizingTable('corner-sw', e)}
+            title="Потяните угол для одновременного масштабирования ширины и высоты окна (все столбцы масштабируются пропорционально)"
+            className="absolute left-0 bottom-0 top-0 w-8 flex items-center justify-center cursor-sw-resize text-gray-400 hover:text-white bg-[#1F222B]/60 hover:bg-blue-600 rounded-tr transition-colors group/corner"
+          >
+            <MoveDiagonal className="w-3.5 h-3.5 -scale-x-100 group-hover/corner:scale-115 transition-transform" />
+          </div>
+
+          <div className="w-32 h-1.5 rounded-full bg-[#2D3139] group-hover:bg-blue-500 transition-colors flex items-center justify-center">
             <GripHorizontal className="w-4 h-4 text-gray-500 group-hover:text-blue-300 transition-colors" />
           </div>
 
-          {/* Угловой маркер масштабирования в правом нижнем углу */}
+          {/* Правый угловой маркер масштабирования: одновременно ширина и высота с масштабированием колонок */}
           <div
-            onMouseDown={(e) => startResizingTable('corner', e)}
-            title="Потяните угол для одновременного изменения ширины и высоты окна таблицы"
-            className="absolute right-0 bottom-0 top-0 w-7 flex items-center justify-center cursor-se-resize text-gray-500 hover:text-blue-400 group/corner"
+            onMouseDown={(e) => startResizingTable('corner-se', e)}
+            title="Потяните угол для одновременного масштабирования ширины и высоты окна (все столбцы масштабируются пропорционально)"
+            className="absolute right-0 bottom-0 top-0 w-8 flex items-center justify-center cursor-se-resize text-gray-400 hover:text-white bg-[#1F222B]/60 hover:bg-blue-600 rounded-tl transition-colors group/corner"
           >
-            <MoveDiagonal className="w-3.5 h-3.5 group-hover/corner:scale-110 transition-transform" />
+            <MoveDiagonal className="w-3.5 h-3.5 group-hover/corner:scale-115 transition-transform" />
           </div>
         </div>
       )}
 
       {/* Всплывающий индикатор размеров во время масштабирования мышкой */}
       {isResizingTable && liveDimensions && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-blue-600 text-white font-mono text-xs px-3.5 py-1.5 rounded-full shadow-xl border border-blue-400 flex items-center gap-2 pointer-events-none animate-in fade-in zoom-in-95">
-          <span>{liveDimensions.width} × {liveDimensions.height} px</span>
+        <div className="absolute bottom-7 left-1/2 -translate-x-1/2 z-40 bg-blue-600 text-white font-mono text-xs px-3.5 py-1.5 rounded-full shadow-2xl border border-blue-400 flex items-center gap-2 pointer-events-none animate-in fade-in zoom-in-95">
+          <span className="font-semibold">
+            {liveDimensions.width} × {liveDimensions.height} px
+          </span>
+          <span className="text-blue-100 text-[11px]">
+            {isResizingTable === 'bottom'
+              ? '• Высота окна'
+              : '• Столбцы масштабируются пропорционально'}
+          </span>
         </div>
       )}
 
