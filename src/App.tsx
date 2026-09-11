@@ -503,7 +503,7 @@ export default function App() {
         <div className="max-w-[2000px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-[#E0E0E0]">
-              СЭД «Документооборот Орг»
+              СЭД «Документооборот ОПР»
             </span>
             <span>•</span>
             <span className="font-mono text-[11px]">SQLite Network Share Edition</span>

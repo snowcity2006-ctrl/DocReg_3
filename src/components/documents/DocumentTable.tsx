@@ -24,11 +24,6 @@ import {
 import { DocumentRecord } from '../../types';
 import { formatDateRussian } from '../../utils/date';
 import { electronBridge } from '../../services/electronBridge';
-import {
-  isAstraNetworkPath,
-  resolveAstraPathForOpening,
-  getAstraCurrentUser,
-} from '../../utils/astraPath';
 
 interface DocumentTableProps {
   documents: DocumentRecord[];
@@ -618,7 +613,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                   onClick={() => handleSort('subject')}
                   className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                 >
-                  <span className="truncate block" title="Тема документа">Тема *</span>
+                  <span className="truncate block">Тема *</span>
                   {renderSortIcon('subject')}
                 </div>
                 <div
@@ -636,7 +631,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                   onClick={() => handleSort('senderName')}
                   className="flex items-center justify-between cursor-pointer min-w-0 pr-1.5"
                 >
-                  <span className="truncate block" title="Отправитель">Отправитель</span>
+                  <span className="truncate block">Отправитель</span>
                   {renderSortIcon('senderName')}
                 </div>
                 <div
@@ -669,7 +664,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 className="py-3 px-3 relative group overflow-hidden"
               >
                 <div className="flex items-center justify-between min-w-0 pr-1.5">
-                  <span className="truncate block" title="Файл / Папка">Файл / Папка</span>
+                  <span className="truncate block">Файл / Папка</span>
                 </div>
                 <div
                   onMouseDown={(e) => startResizing('filePath', e)}
@@ -683,7 +678,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 className="py-3 px-3 relative group overflow-hidden"
               >
                 <div className="flex items-center justify-between min-w-0 pr-1.5">
-                  <span className="truncate block" title="Ссылка СЭД">СЭД ссылка</span>
+                  <span className="truncate block">СЭД ссылка</span>
                 </div>
                 <div
                   onMouseDown={(e) => startResizing('sedUrl', e)}
@@ -752,7 +747,6 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                   <span
                     onClick={() => onView(doc)}
                     className="font-bold text-slate-900 dark:text-[#E0E0E0] hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer break-words whitespace-normal leading-relaxed transition-colors block"
-                    title={doc.subject}
                   >
                     {doc.subject}
                   </span>
@@ -765,17 +759,17 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                     {(doc.senderDepartmentName || doc.signatoryEmployeeName || doc.senderEmployeeName) && (
                       <div className="mt-1 flex flex-col gap-0.5 text-[10px]">
                         {doc.senderDepartmentName && (
-                          <span className="inline-flex items-center text-blue-700 dark:text-blue-400 font-semibold break-words" title={`Подразделение: ${doc.senderDepartmentName}`}>
+                          <span className="inline-flex items-center text-blue-700 dark:text-blue-400 font-semibold break-words">
                             СП: {doc.senderDepartmentName}
                           </span>
                         )}
                         {doc.signatoryEmployeeName && (
-                          <span className="inline-flex items-center text-emerald-700 dark:text-emerald-400/90 font-semibold break-words" title={`Подписал: ${doc.signatoryEmployeeName}`}>
+                          <span className="inline-flex items-center text-emerald-700 dark:text-emerald-400/90 font-semibold break-words">
                             Подписал: {doc.signatoryEmployeeName}
                           </span>
                         )}
                         {doc.senderEmployeeName && (
-                          <span className="inline-flex items-center text-slate-600 dark:text-gray-400 break-words" title={`Исполнитель: ${doc.senderEmployeeName}`}>
+                          <span className="inline-flex items-center text-slate-600 dark:text-gray-400 break-words">
                             Исп: {doc.senderEmployeeName}
                           </span>
                         )}
@@ -805,18 +799,11 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                       const isFolder = doc.filePath.endsWith('/') || doc.filePath.endsWith('\\') || !/\.[a-zA-Z0-9]{1,8}$/.test(doc.filePath.trim());
                       const cleanPath = doc.filePath.replace(/[/\\]+$/, '');
                       const displayName = cleanPath.split(/[/\\]/).pop() || doc.filePath;
-                      const isAstra = isAstraNetworkPath(doc.filePath);
-                      const currentUser = getAstraCurrentUser();
-                      const localResolved = isAstra ? resolveAstraPathForOpening(doc.filePath, currentUser) : doc.filePath;
-                      const tooltip = isAstra
-                        ? `Сетевая ссылка в БД:\n${doc.filePath}\n\nОткрытие на данном ПК (${currentUser}):\n${localResolved}`
-                        : `Открыть ${isFolder ? 'папку' : 'файл'}:\n${doc.filePath}`;
 
                       return (
                         <button
                           type="button"
                           onClick={() => handleOpenFile(doc.filePath)}
-                          title={tooltip}
                           className={`inline-flex items-center gap-1.5 ${isFolder ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300' : 'text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300'} hover:underline max-w-full font-mono text-[11px] cursor-pointer break-all whitespace-normal text-left`}
                         >
                           {isFolder ? (
@@ -839,7 +826,6 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                     <button
                       type="button"
                       onClick={() => handleOpenSed(doc.sedUrl)}
-                      title={`Открыть карточку в СЭД: ${doc.sedUrl}`}
                       className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline font-mono text-[11px] font-semibold cursor-pointer"
                     >
                       <Globe className="w-3.5 h-3.5 shrink-0" />
