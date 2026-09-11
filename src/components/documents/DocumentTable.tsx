@@ -113,7 +113,8 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
     if (!resizingCol.current) return;
     const { colKey, startX, startWidth } = resizingCol.current;
     const delta = e.clientX - startX;
-    const newWidth = Math.max(60, startWidth + delta);
+    const minW = colKey === 'id' ? 44 : colKey === 'direction' ? 75 : 60;
+    const newWidth = Math.max(minW, startWidth + delta);
     setColWidths((prev) => {
       const updated = { ...prev, [colKey]: newWidth };
       try {
@@ -469,12 +470,28 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
         {/* Контейнер таблицы с горизонтальным и вертикальным скроллом */}
         <div className="overflow-auto flex-1 min-h-[160px]">
           <table
-            className="w-full text-left border-collapse text-xs select-none"
+            className="text-left border-collapse text-xs select-none"
             style={{
               tableLayout: 'fixed',
+              width: `${Object.values(colWidths).reduce((a, b) => a + b, 0)}px`,
               minWidth: `${Object.values(colWidths).reduce((a, b) => a + b, 0)}px`,
             }}
           >
+            <colgroup>
+              <col style={{ width: `${colWidths.id}px` }} />
+              <col style={{ width: `${colWidths.docType}px` }} />
+              <col style={{ width: `${colWidths.direction}px` }} />
+              <col style={{ width: `${colWidths.outNum}px` }} />
+              <col style={{ width: `${colWidths.outDate}px` }} />
+              <col style={{ width: `${colWidths.inNum}px` }} />
+              <col style={{ width: `${colWidths.inDate}px` }} />
+              <col style={{ width: `${colWidths.subject}px` }} />
+              <col style={{ width: `${colWidths.sender}px` }} />
+              <col style={{ width: `${colWidths.recipient}px` }} />
+              <col style={{ width: `${colWidths.filePath}px` }} />
+              <col style={{ width: `${colWidths.sedUrl}px` }} />
+              <col style={{ width: `${colWidths.actions}px` }} />
+            </colgroup>
             <thead className="sticky top-0 z-20 bg-[#1F222B] shadow-xs">
               <tr className="border-b border-[#2D3139] bg-[#1F222B] text-slate-800 dark:text-gray-400 font-bold dark:font-semibold uppercase tracking-wider">
               
@@ -492,7 +509,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </div>
                 <div
                   onMouseDown={(e) => startResizing('id', e)}
-                  className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-500"
+                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500 z-10"
                 />
               </th>
 
@@ -510,7 +527,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </div>
                 <div
                   onMouseDown={(e) => startResizing('docType', e)}
-                  className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-500"
+                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500 z-10"
                 />
               </th>
 
@@ -528,7 +545,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </div>
                 <div
                   onMouseDown={(e) => startResizing('direction', e)}
-                  className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-500"
+                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500 z-10"
                 />
               </th>
 
@@ -546,7 +563,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </div>
                 <div
                   onMouseDown={(e) => startResizing('outNum', e)}
-                  className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-500"
+                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500 z-10"
                 />
               </th>
 
@@ -564,7 +581,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </div>
                 <div
                   onMouseDown={(e) => startResizing('outDate', e)}
-                  className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-500"
+                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500 z-10"
                 />
               </th>
 
@@ -582,7 +599,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </div>
                 <div
                   onMouseDown={(e) => startResizing('inNum', e)}
-                  className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-500"
+                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500 z-10"
                 />
               </th>
 
@@ -600,7 +617,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </div>
                 <div
                   onMouseDown={(e) => startResizing('inDate', e)}
-                  className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-500"
+                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500 z-10"
                 />
               </th>
 
@@ -618,7 +635,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </div>
                 <div
                   onMouseDown={(e) => startResizing('subject', e)}
-                  className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-500"
+                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500 z-10"
                 />
               </th>
 
@@ -636,7 +653,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </div>
                 <div
                   onMouseDown={(e) => startResizing('sender', e)}
-                  className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-500"
+                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500 z-10"
                 />
               </th>
 
@@ -654,7 +671,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </div>
                 <div
                   onMouseDown={(e) => startResizing('recipient', e)}
-                  className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-500"
+                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500 z-10"
                 />
               </th>
 
@@ -668,7 +685,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </div>
                 <div
                   onMouseDown={(e) => startResizing('filePath', e)}
-                  className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-500"
+                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500 z-10"
                 />
               </th>
 
@@ -682,7 +699,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </div>
                 <div
                   onMouseDown={(e) => startResizing('sedUrl', e)}
-                  className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-500"
+                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500 z-10"
                 />
               </th>
 
@@ -704,46 +721,54 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 className="hover:bg-slate-100/80 dark:hover:bg-[#1F222B]/70 transition-colors group"
               >
                 {/* ID */}
-                <td className="py-2.5 px-3 font-mono font-semibold text-slate-700 dark:text-gray-500 break-words">
+                <td className="py-2.5 px-3 font-mono font-semibold text-slate-700 dark:text-gray-500 overflow-hidden truncate">
                   {doc.id}
                 </td>
 
                 {/* Тип документа */}
-                <td className="py-2.5 px-3">
-                  <span className="break-words leading-tight block text-slate-800 dark:text-gray-300 font-medium">
+                <td className="py-2.5 px-3 overflow-hidden">
+                  <span className="truncate block text-slate-800 dark:text-gray-300 font-medium">
                     {doc.docTypeName || '—'}
                   </span>
                 </td>
 
                 {/* Направление */}
-                <td className="py-2.5 px-3">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20 break-words whitespace-normal inline-block">
+                <td className="py-2.5 px-3 overflow-hidden">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20 truncate block text-center max-w-full">
                     {doc.directionName || '—'}
                   </span>
                 </td>
 
                 {/* Исх.№ */}
-                <td className="py-2.5 px-3 font-mono font-semibold text-slate-900 dark:text-gray-300 break-words">
-                  {doc.outgoingNumber || '—'}
+                <td className="py-2.5 px-3 font-mono font-semibold text-slate-900 dark:text-gray-300 overflow-hidden">
+                  <span className="truncate block font-mono font-semibold">
+                    {doc.outgoingNumber || '—'}
+                  </span>
                 </td>
 
                 {/* Исх.дата */}
-                <td className="py-2.5 px-3 font-mono text-slate-800 dark:text-gray-300 break-words">
-                  {formatDateRussian(doc.outgoingDate)}
+                <td className="py-2.5 px-3 font-mono text-slate-800 dark:text-gray-300 overflow-hidden">
+                  <span className="truncate block font-mono">
+                    {formatDateRussian(doc.outgoingDate)}
+                  </span>
                 </td>
 
                 {/* Вх.№ */}
-                <td className="py-2.5 px-3 font-mono font-semibold text-slate-900 dark:text-gray-300 break-words">
-                  {doc.incomingNumber || '—'}
+                <td className="py-2.5 px-3 font-mono font-semibold text-slate-900 dark:text-gray-300 overflow-hidden">
+                  <span className="truncate block font-mono font-semibold">
+                    {doc.incomingNumber || '—'}
+                  </span>
                 </td>
 
                 {/* Вх.дата */}
-                <td className="py-2.5 px-3 font-mono text-slate-800 dark:text-gray-300 break-words">
-                  {formatDateRussian(doc.incomingDate)}
+                <td className="py-2.5 px-3 font-mono text-slate-800 dark:text-gray-300 overflow-hidden">
+                  <span className="truncate block font-mono">
+                    {formatDateRussian(doc.incomingDate)}
+                  </span>
                 </td>
 
                 {/* Тема (с переносом по словам по ТЗ) */}
-                <td className="py-2.5 px-3">
+                <td className="py-2.5 px-3 overflow-hidden">
                   <span
                     onClick={() => onView(doc)}
                     className="font-bold text-slate-900 dark:text-[#E0E0E0] hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer break-words whitespace-normal leading-relaxed transition-colors block"
@@ -753,7 +778,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </td>
 
                 {/* Отправитель */}
-                <td className="py-2.5 px-3 break-words whitespace-normal text-slate-800 dark:text-gray-300 font-medium">
+                <td className="py-2.5 px-3 overflow-hidden break-words whitespace-normal text-slate-800 dark:text-gray-300 font-medium">
                   <div>
                     <span className="break-words">{doc.senderName || '—'}</span>
                     {(doc.senderDepartmentName || doc.signatoryEmployeeName || doc.senderEmployeeName) && (
@@ -779,7 +804,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </td>
 
                 {/* Получатель */}
-                <td className="py-2.5 px-3 break-words whitespace-normal text-slate-800 dark:text-gray-300 font-medium">
+                <td className="py-2.5 px-3 overflow-hidden break-words whitespace-normal text-slate-800 dark:text-gray-300 font-medium">
                   <div>
                     <span className="break-words">{doc.recipientName || '—'}</span>
                     {doc.recipientDepartmentNames && (
@@ -793,7 +818,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </td>
 
                 {/* Путь к документу (гиперссылка) */}
-                <td className="py-2.5 px-3">
+                <td className="py-2.5 px-3 overflow-hidden">
                   {doc.filePath ? (
                     (() => {
                       const isFolder = doc.filePath.endsWith('/') || doc.filePath.endsWith('\\') || !/\.[a-zA-Z0-9]{1,8}$/.test(doc.filePath.trim());
@@ -821,7 +846,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </td>
 
                 {/* Путь к документу в СЭД (гиперссылка) */}
-                <td className="py-2.5 px-3">
+                <td className="py-2.5 px-3 overflow-hidden">
                   {doc.sedUrl ? (
                     <button
                       type="button"
@@ -838,7 +863,7 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                 </td>
 
                 {/* Действия */}
-                <td className="py-2.5 px-3 text-right sticky right-0 bg-white dark:bg-[#171A21] group-hover:bg-slate-100 dark:group-hover:bg-[#1F222B] transition-colors">
+                <td className="py-2.5 px-3 text-right sticky right-0 bg-white dark:bg-[#171A21] group-hover:bg-slate-100 dark:group-hover:bg-[#1F222B] transition-colors overflow-hidden">
                   <div className="flex items-center justify-end gap-1">
                     {/* Просмотр карточки документа */}
                     <button
