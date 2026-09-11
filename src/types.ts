@@ -89,6 +89,7 @@ export interface DatabaseConfig {
   lastConnected?: string;
   syncMode?: 'auto' | 'direct' | 'cache_sync';
   isUsingLocalCache?: boolean;
+  astraDefaultUser?: string;
 }
 
 export interface DbStatus {
@@ -213,6 +214,8 @@ export interface ElectronAPI {
 
   // Системная информация и масштабирование
   getSystemInfo: () => Promise<{ platform: string; isAstraLinux: boolean; version: string; isElectron: boolean }>;
+  getCurrentUser?: () => Promise<string | null>;
+  setCurrentUser?: (username: string) => Promise<void>;
   setZoomFactor?: (factor: number) => void;
   getZoomFactor?: () => number;
 }

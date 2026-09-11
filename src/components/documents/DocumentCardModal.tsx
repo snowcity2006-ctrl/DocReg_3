@@ -15,10 +15,16 @@ import {
   MessageSquare,
   Maximize2,
   Minimize2,
+  Laptop,
 } from 'lucide-react';
 import { DocumentRecord } from '../../types';
 import { formatDateRussian, formatDateTimeRussian } from '../../utils/date';
 import { electronBridge } from '../../services/electronBridge';
+import {
+  resolveAstraPathForOpening,
+  isAstraNetworkPath,
+  getAstraCurrentUser,
+} from '../../utils/astraPath';
 
 interface DocumentCardModalProps {
   isOpen: boolean;
@@ -254,31 +260,50 @@ export const DocumentCardModal: React.FC<DocumentCardModalProps> = ({
             {doc.filePath ? (
               (() => {
                 const isFolder = doc.filePath.endsWith('/') || doc.filePath.endsWith('\\') || !/\.[a-zA-Z0-9]{1,8}$/.test(doc.filePath.trim());
+                const isAstra = isAstraNetworkPath(doc.filePath);
+                const localUser = getAstraCurrentUser();
+                const resolvedPath = resolveAstraPathForOpening(doc.filePath, localUser);
+
                 return (
-                  <div className={`p-3 bg-[#0F1115] rounded-xl border ${isFolder ? 'border-emerald-500/30' : 'border-blue-500/30'} flex items-center justify-between`}>
-                    <div className="flex items-center gap-2 overflow-hidden pr-2">
-                      {isFolder ? (
-                        <FolderOpen className="w-4 h-4 text-emerald-400 shrink-0" />
-                      ) : (
-                        <FileText className="w-4 h-4 text-blue-400 shrink-0" />
-                      )}
-                      <div className="truncate">
-                        <span className="text-[10px] text-gray-400 block">
-                          {isFolder ? 'Сетевая папка документа' : 'Файл документа на сетевом диске'}
-                        </span>
-                        <span className={`font-mono ${isFolder ? 'text-emerald-400' : 'text-blue-400'} font-medium truncate block`}>
-                          {doc.filePath}
+                  <div className={`p-3 bg-[#0F1115] rounded-xl border ${isFolder ? 'border-emerald-500/30' : 'border-blue-500/30'} flex flex-col gap-2`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 overflow-hidden pr-2">
+                        {isFolder ? (
+                          <FolderOpen className="w-4 h-4 text-emerald-400 shrink-0" />
+                        ) : (
+                          <FileText className="w-4 h-4 text-blue-400 shrink-0" />
+                        )}
+                        <div className="truncate">
+                          <span className="text-[10px] text-gray-400 block">
+                            {isFolder ? 'Сетевая папка документа (ссылка в БД)' : 'Файл документа (сетевая ссылка в БД)'}
+                          </span>
+                          <span className={`font-mono ${isFolder ? 'text-emerald-400' : 'text-blue-400'} font-medium truncate block select-all`}>
+                            {doc.filePath}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleOpenFile}
+                        className={`px-3 py-1.5 ${isFolder ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-lg font-medium text-[11px] flex items-center gap-1 shrink-0 transition-colors cursor-pointer`}
+                        title={isFolder ? 'Открыть папку в файловом менеджере ОС' : 'Открыть файл в ОС'}
+                      >
+                        <span>{isFolder ? 'Открыть папку' : 'Открыть'}</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    {/* Разрешение пути для Astra Linux на текущей рабочей станции */}
+                    {isAstra && (
+                      <div className="pt-2 border-t border-[#1F222B] text-[11px] flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-gray-400">
+                        <div className="flex items-center gap-1.5 text-amber-300/90 font-medium">
+                          <Laptop className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span>На этом компьютере ({localUser}):</span>
+                        </div>
+                        <span className="font-mono text-gray-300 truncate bg-[#14171E] px-2 py-0.5 rounded border border-[#222630] select-all">
+                          {resolvedPath}
                         </span>
                       </div>
-                    </div>
-                    <button
-                      onClick={handleOpenFile}
-                      className={`px-3 py-1.5 ${isFolder ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-lg font-medium text-[11px] flex items-center gap-1 shrink-0 transition-colors cursor-pointer`}
-                      title={isFolder ? 'Открыть папку в ОС' : 'Открыть файл в ОС'}
-                    >
-                      <span>{isFolder ? 'Открыть папку' : 'Открыть'}</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </button>
+                    )}
                   </div>
                 );
               })()

@@ -15,6 +15,12 @@ import {
   ElectronAPI
 } from '../types';
 import { formatDbTimestamp } from '../utils/date';
+import {
+  normalizeAstraPathForStorage,
+  resolveAstraPathForOpening,
+  getAstraCurrentUser,
+  setAstraCurrentUser,
+} from '../utils/astraPath';
 
 const STORAGE_KEYS = {
   DB_CONFIG: 'docflow_db_config',
@@ -72,18 +78,18 @@ const INITIAL_DATA = {
       id: 1,
       docTypeId: 1,
       directionId: 1,
-      outgoingNumber: 'МЦР-128/2026',
-      outgoingDate: '2026-08-20',
+      outgoingNumber: '102_30-6856',
+      outgoingDate: '2026-09-02',
       incomingNumber: 'ВХ-00452',
-      incomingDate: '2026-08-22',
-      subject: 'О согласовании внедрения СЭД на базе Astra Linux 1.7 Special Edition',
+      incomingDate: '2026-09-04',
+      subject: 'О результатах рассм. пд втд (Кор-ка по втдответ в ГИФн)',
       senderId: 3,
       recipientId: 1,
-      filePath: '/mnt/network_share/documents/2026/08/MCR-128_Agreement.pdf',
+      filePath: '@nadym-dobycha.gazprom.ru/mnt/centr/onp/экспертиза/5. ХГКМ/0825 ГПП/7. ПД/2026.08.21 Кор-ка по втдответ в ГИФн/исх. в ГиФн от 02.09.2026 102_30-6856 _0 результатах рассм.пд втд.pdf',
       sedUrl: 'https://sed.company.local/docs/card/45291',
-      comments: 'Приложение содержит регламент безопасности и акт совместимости',
-      createdAt: '2026-08-22T09:15:00.000Z',
-      updatedAt: '2026-08-22T09:15:00.000Z',
+      comments: 'Сетевая ссылка Astra Linux 1.7: при открытии на ПК автоматически подставляется /home/<пользователь>',
+      createdAt: '2026-09-02T09:15:00.000Z',
+      updatedAt: '2026-09-02T09:15:00.000Z',
     },
     {
       id: 2,
@@ -216,8 +222,34 @@ class WebMockDatabase implements ElectronAPI {
     if (!localStorage.getItem(STORAGE_KEYS.DIRECTIONS)) {
       localStorage.setItem(STORAGE_KEYS.DIRECTIONS, JSON.stringify(INITIAL_DATA.directions));
     }
-    if (!localStorage.getItem(STORAGE_KEYS.DOCUMENTS)) {
+    const rawDocs = localStorage.getItem(STORAGE_KEYS.DOCUMENTS);
+    if (!rawDocs) {
       localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(INITIAL_DATA.documents));
+    } else {
+      try {
+        const docs = JSON.parse(rawDocs);
+        let changed = false;
+        for (const d of docs) {
+          if (d.filePath) {
+            const norm = normalizeAstraPathForStorage(d.filePath);
+            if (norm.wasNormalized) {
+              d.filePath = norm.normalizedPath;
+              changed = true;
+            }
+          }
+          // Обновляем первый документ до актуального примера с Astra Linux из промта
+          if (d.id === 1 && (d.filePath === '/mnt/network_share/documents/2026/08/MCR-128_Agreement.pdf' || !d.filePath.startsWith('@'))) {
+            d.filePath = INITIAL_DATA.documents[0].filePath;
+            d.outgoingNumber = INITIAL_DATA.documents[0].outgoingNumber;
+            d.subject = INITIAL_DATA.documents[0].subject;
+            d.comments = INITIAL_DATA.documents[0].comments;
+            changed = true;
+          }
+        }
+        if (changed) {
+          localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(docs));
+        }
+      } catch {}
     }
     if (!localStorage.getItem(STORAGE_KEYS.BACKUPS)) {
       const initialBackups: BackupFileInfo[] = [
@@ -781,8 +813,16 @@ class WebMockDatabase implements ElectronAPI {
     const rIds = doc.recipientIds || (doc.recipientId ? [doc.recipientId] : []);
     const primaryRecipientId = doc.recipientId || (rIds.length > 0 ? rIds[0] : undefined);
 
+    // Нормализация сетевого пути Astra Linux для записи в базу данных
+    let normalizedFilePath = doc.filePath?.trim() || undefined;
+    if (normalizedFilePath) {
+      const norm = normalizeAstraPathForStorage(normalizedFilePath);
+      normalizedFilePath = norm.normalizedPath;
+    }
+
     const docToSave = {
       ...doc,
+      filePath: normalizedFilePath,
       senderDepartmentId: doc.senderDepartmentId || undefined,
       senderDepartmentName: doc.senderDepartmentName || undefined,
       senderEmployeeId: doc.senderEmployeeId || undefined,
@@ -1076,16 +1116,18 @@ class WebMockDatabase implements ElectronAPI {
           // Если запущен в Electron или среде с прямым доступом к FS
           const fullPath = (file as any).path;
           if (fullPath) {
+            const norm = normalizeAstraPathForStorage(fullPath);
+            if (norm.extractedUser) {
+              setAstraCurrentUser(norm.extractedUser);
+            }
             if (document.body.contains(input)) document.body.removeChild(input);
-            resolve(fullPath);
+            resolve(norm.normalizedPath);
             return;
           }
 
-          // В веб-браузере формируем сетевую гиперссылку к выбранному файлу
+          // В веб-браузере формируем сетевую гиперссылку к выбранному файлу в формате Astra Linux
           const fileName = file.name;
-          const currentYear = new Date().getFullYear();
-          const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
-          const finalPath = `/mnt/network_share/documents/${currentYear}/${currentMonth}/${fileName}`;
+          const finalPath = `@nadym-dobycha.gazprom.ru/mnt/centr/onp/экспертиза/5. ХГКМ/0825 ГПП/7. ПД/2026.08.21 Кор-ка по втдответ в ГИФн/${fileName}`;
           if (document.body.contains(input)) document.body.removeChild(input);
           resolve(finalPath);
         } else {
@@ -1137,15 +1179,18 @@ class WebMockDatabase implements ElectronAPI {
             const parts = normalized.split('/');
             parts.pop(); // удаляем имя файла
             const folderPath = parts.join('/') + '/';
+            const norm = normalizeAstraPathForStorage(folderPath);
+            if (norm.extractedUser) {
+              setAstraCurrentUser(norm.extractedUser);
+            }
             if (document.body.contains(input)) document.body.removeChild(input);
-            resolve(folderPath);
+            resolve(norm.normalizedPath);
             return;
           }
 
           const relPath = file.webkitRelativePath || '';
-          const folderName = relPath.split('/')[0] || 'network_folder';
-          const currentYear = new Date().getFullYear();
-          const folderPath = `/mnt/network_share/documents/${currentYear}/${folderName}/`;
+          const folderName = relPath.split('/')[0] || '2026.08.21 Кор-ка по втдответ в ГИФн';
+          const folderPath = `@nadym-dobycha.gazprom.ru/mnt/centr/onp/экспертиза/5. ХГКМ/0825 ГПП/7. ПД/${folderName}/`;
           if (document.body.contains(input)) document.body.removeChild(input);
           resolve(folderPath);
         } else {
@@ -1181,11 +1226,21 @@ class WebMockDatabase implements ElectronAPI {
   }
 
   async openPath(path: string): Promise<{ success: boolean; message?: string }> {
-    await this.addLog('info', 'ui', `Запрос на открытие файла/папки ОС: ${path}`);
+    // Разрешаем сетевой путь Astra Linux: для @domain/... подставляется /home/<пользователь>
+    const resolved = resolveAstraPathForOpening(path);
+    await this.addLog('info', 'ui', `Запрос на открытие файла/папки ОС: ${resolved} (исходный сетевой путь: ${path})`);
     return {
       success: true,
-      message: `Открыто в файловом менеджере ОС (Astra Linux Fly / Explorer): ${path}`,
+      message: `Открыто в файловом менеджере ОС (Astra Linux Fly / Explorer): ${resolved}`,
     };
+  }
+
+  async getCurrentUser(): Promise<string | null> {
+    return getAstraCurrentUser();
+  }
+
+  async setCurrentUser(username: string): Promise<void> {
+    setAstraCurrentUser(username);
   }
 
   async openExternal(url: string): Promise<{ success: boolean; message?: string }> {

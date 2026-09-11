@@ -18,6 +18,8 @@ import {
   UserCheck,
   Maximize2,
   Minimize2,
+  Laptop,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   DocumentRecord,
@@ -30,6 +32,13 @@ import {
 import { electronBridge } from '../../services/electronBridge';
 import { SearchableCombobox, ComboboxOption } from './SearchableCombobox';
 import { SearchableMultiSelect, MultiSelectOption } from './SearchableMultiSelect';
+import {
+  normalizeAstraPathForStorage,
+  resolveAstraPathForOpening,
+  getAstraCurrentUser,
+  setAstraCurrentUser,
+  isAstraNetworkPath,
+} from '../../utils/astraPath';
 
 interface DocumentFormModalProps {
   isOpen: boolean;
@@ -95,9 +104,41 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
   const [sedUrl, setSedUrl] = useState('');
   const [comments, setComments] = useState('');
 
+  // Astra Linux: текущий локальный пользователь рабочей станции и уведомление о нормализации
+  const [currentAstraUser, setCurrentAstraUserState] = useState<string>(() => getAstraCurrentUser());
+  const [astraNormalizedNotice, setAstraNormalizedNotice] = useState<string | null>(null);
+  const [editingAstraUser, setEditingAstraUser] = useState(false);
+  const [customUserInput, setCustomUserInput] = useState('');
+
   const [pastedFeedback, setPastedFeedback] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const handleUpdateAstraUser = (user: string) => {
+    const clean = user.trim().split('@')[0];
+    if (clean) {
+      setAstraCurrentUser(clean);
+      setCurrentAstraUserState(clean);
+      setEditingAstraUser(false);
+    }
+  };
+
+  const handleFilePathChange = (value: string) => {
+    const norm = normalizeAstraPathForStorage(value);
+    if (norm.wasNormalized) {
+      setFilePath(norm.normalizedPath);
+      if (norm.extractedUser) {
+        setAstraCurrentUser(norm.extractedUser);
+        setCurrentAstraUserState(norm.extractedUser);
+      }
+      setAstraNormalizedNotice(
+        `Сетевая ссылка автоматически преобразована в формат базы данных "${norm.normalizedPath}". На данном ПК (${norm.extractedUser || currentAstraUser}) документ будет открываться по пути: /home/${norm.extractedUser || currentAstraUser}${norm.normalizedPath}`
+      );
+      setTimeout(() => setAstraNormalizedNotice(null), 8000);
+    } else {
+      setFilePath(value);
+    }
+  };
 
   useEffect(() => {
     if (initialData) {
@@ -172,7 +213,7 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
         ? await electronBridge.selectDocumentFile()
         : await electronBridge.selectDocumentFileOrFolder();
       if (selected) {
-        setFilePath(selected);
+        handleFilePathChange(selected);
       }
     } catch (e: any) {
       setError(`Ошибка выбора файла: ${e.message}`);
@@ -185,7 +226,7 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
         ? await electronBridge.selectDocumentFolder()
         : await electronBridge.selectDocumentFileOrFolder();
       if (selected) {
-        setFilePath(selected);
+        handleFilePathChange(selected);
       }
     } catch (e: any) {
       setError(`Ошибка выбора папки: ${e.message}`);
@@ -476,7 +517,7 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
         recipientIds: recipientIds.length > 0 ? recipientIds : undefined,
         recipientDepartmentIds: recipientDepartmentIds.length > 0 ? recipientDepartmentIds : undefined,
         recipientDepartmentNames: recipientDeptNames || undefined,
-        filePath: filePath.trim() || undefined,
+        filePath: filePath.trim() ? normalizeAstraPathForStorage(filePath.trim()).normalizedPath : undefined,
         sedUrl: formattedSedUrl || undefined,
         comments: comments.trim() || undefined,
       });
@@ -925,8 +966,8 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
                 <input
                   type="text"
                   value={filePath}
-                  onChange={(e) => setFilePath(e.target.value)}
-                  placeholder="/mnt/network_share/documents/2026/09/doc.pdf или /mnt/network_share/documents/2026/09/"
+                  onChange={(e) => handleFilePathChange(e.target.value)}
+                  placeholder="@nadym-dobycha.gazprom.ru/mnt/... или /home/user@nadym-dobycha.gazprom.ru/mnt/..."
                   className="flex-1 min-w-0 px-3.5 py-2 bg-[#0F1115] border border-[#2D3139] rounded-xl text-xs font-mono text-[#E0E0E0] placeholder:text-gray-500 focus:outline-none focus:border-blue-500"
                 />
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -950,21 +991,106 @@ export const DocumentFormModal: React.FC<DocumentFormModalProps> = ({
                   </button>
                 </div>
               </div>
-              {/* Индикатор сформированной ссылки: файл или папка */}
+
+              {/* Уведомление о нормализации пути Astra Linux */}
+              {astraNormalizedNotice && (
+                <div className="mt-2 p-2 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-[11px] flex items-start gap-2 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <div className="leading-snug">{astraNormalizedNotice}</div>
+                </div>
+              )}
+
+              {/* Индикатор сформированной ссылки и разрешение сетевого пути для Astra Linux 1.7 */}
               {filePath && (
-                <div className="mt-1.5 text-[11px] text-gray-400 flex items-center gap-1.5 min-w-0">
-                  {filePath.endsWith('/') || filePath.endsWith('\\') || !/\.[a-zA-Z0-9]{1,8}$/.test(filePath.trim()) ? (
-                    <>
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                      <span className="text-emerald-400 font-medium shrink-0">Сформирована ссылка на папку:</span>
-                      <span className="font-mono text-gray-300 truncate">{filePath}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
-                      <span className="text-blue-400 font-medium shrink-0">Сформирована ссылка на файл:</span>
-                      <span className="font-mono text-gray-300 truncate">{filePath}</span>
-                    </>
+                <div className="mt-2 p-2.5 rounded-xl bg-[#0B0D11] border border-[#222630] space-y-1.5 text-[11px]">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    {filePath.endsWith('/') || filePath.endsWith('\\') || !/\.[a-zA-Z0-9]{1,8}$/.test(filePath.trim()) ? (
+                      <>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                        <span className="text-emerald-400 font-medium shrink-0">Тип: Папка</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                        <span className="text-blue-400 font-medium shrink-0">Тип: Файл</span>
+                      </>
+                    )}
+                    <span className="text-gray-500">•</span>
+                    <span className="text-gray-400 shrink-0">Запись в БД:</span>
+                    <span className="font-mono text-cyan-300 truncate select-all">{filePath}</span>
+                  </div>
+
+                  {isAstraNetworkPath(filePath) && (
+                    <div className="pt-1 border-t border-[#1C2028] flex flex-col gap-1 text-gray-400">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 text-amber-300/90 font-medium">
+                          <Laptop className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span>Astra Linux (разрешение пути на текущей рабочей станции):</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-[10px]">
+                          <span className="text-gray-500">Пользователь ПК:</span>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateAstraUser('burlakin.mi')}
+                            className={`px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
+                              currentAstraUser === 'burlakin.mi'
+                                ? 'bg-blue-600 text-white font-semibold'
+                                : 'bg-[#1C2028] text-gray-400 hover:text-gray-200'
+                            }`}
+                          >
+                            burlakin.mi
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateAstraUser('nazarova.sa')}
+                            className={`px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
+                              currentAstraUser === 'nazarova.sa'
+                                ? 'bg-blue-600 text-white font-semibold'
+                                : 'bg-[#1C2028] text-gray-400 hover:text-gray-200'
+                            }`}
+                          >
+                            nazarova.sa
+                          </button>
+                          {editingAstraUser ? (
+                            <span className="inline-flex items-center gap-1">
+                              <input
+                                type="text"
+                                value={customUserInput}
+                                onChange={(e) => setCustomUserInput(e.target.value)}
+                                placeholder="логин"
+                                className="w-20 px-1 py-0.5 bg-[#171A21] border border-blue-500 rounded text-[10px] text-white"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleUpdateAstraUser(customUserInput);
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateAstraUser(customUserInput)}
+                                className="px-1.5 py-0.5 bg-blue-600 text-white rounded text-[10px]"
+                              >
+                                OK
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCustomUserInput(currentAstraUser);
+                                setEditingAstraUser(true);
+                              }}
+                              className="text-gray-500 hover:text-gray-300 underline text-[10px] ml-1"
+                            >
+                              другой
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="font-mono text-gray-300 truncate bg-[#14171E] px-2 py-1 rounded border border-[#222630] select-all">
+                        {resolveAstraPathForOpening(filePath, currentAstraUser)}
+                      </div>
+                    </div>
                   )}
                 </div>
               )}

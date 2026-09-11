@@ -274,7 +274,15 @@ function setupIpcHandlers() {
   // --- Документы ---
   ipcMain.handle('doc:getAll', async () => dbManager.getDocuments());
   ipcMain.handle('doc:getById', async (_e, id) => dbManager.getDocumentById(id));
-  ipcMain.handle('doc:save', async (_e, doc) => dbManager.saveDocument(doc));
+  ipcMain.handle('doc:save', async (_e, doc) => {
+    if (doc && doc.filePath) {
+      const match = doc.filePath.trim().replace(/\\/g, '/').match(/^\/?home\/([^/@\s\\]+)(@.+)$/i);
+      if (match) {
+        doc.filePath = match[2]; // сохраняем в БД как @domain/...
+      }
+    }
+    return dbManager.saveDocument(doc);
+  });
   ipcMain.handle('doc:delete', async (_e, id) => dbManager.deleteDocument(id));
 
   // --- Резервное копирование ---
@@ -370,7 +378,18 @@ function setupIpcHandlers() {
   ipcMain.handle('shell:openPath', async (_e, filePath: string) => {
     try {
       if (!filePath) return { success: false, message: 'Путь не указан' };
-      const res = await shell.openPath(filePath);
+
+      let targetPath = filePath.trim().replace(/^["']|["']$/g, '');
+      // Поддержка сетевых ссылок Astra Linux вида @nadym-dobycha.gazprom.ru/...
+      // Подставляем: /home/ + <текущий пользователь ОС>
+      if (targetPath.startsWith('@') || targetPath.startsWith('/@')) {
+        const cleanDomainPart = targetPath.startsWith('/@') ? targetPath.substring(1) : targetPath;
+        const osUser = (process.env.USER || process.env.LOGNAME || process.env.USERNAME || 'burlakin.mi').split('@')[0];
+        targetPath = `/home/${osUser}${cleanDomainPart}`;
+      }
+
+      logger.log('info', 'ipc', `Открытие файла/папки ОС: ${targetPath} (исходный сетевой путь: ${filePath})`);
+      const res = await shell.openPath(targetPath);
       if (res) {
         return { success: false, message: res };
       }
@@ -412,6 +431,11 @@ function setupIpcHandlers() {
       version: app.getVersion(),
       isElectron: true,
     };
+  });
+
+  ipcMain.handle('system:getCurrentUser', async () => {
+    const raw = process.env.USER || process.env.LOGNAME || process.env.USERNAME || '';
+    return raw ? raw.split('@')[0] : 'burlakin.mi';
   });
 }
 

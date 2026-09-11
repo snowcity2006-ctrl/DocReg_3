@@ -63,6 +63,7 @@ const api: ElectronAPI = {
 
   // Системная информация и масштабирование
   getSystemInfo: () => ipcRenderer.invoke('system:getInfo'),
+  getCurrentUser: () => ipcRenderer.invoke('system:getCurrentUser'),
   setZoomFactor: (factor: number) => {
     try {
       webFrame.setZoomFactor(factor);

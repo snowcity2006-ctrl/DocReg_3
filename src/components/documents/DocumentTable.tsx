@@ -24,6 +24,11 @@ import {
 import { DocumentRecord } from '../../types';
 import { formatDateRussian } from '../../utils/date';
 import { electronBridge } from '../../services/electronBridge';
+import {
+  isAstraNetworkPath,
+  resolveAstraPathForOpening,
+  getAstraCurrentUser,
+} from '../../utils/astraPath';
 
 interface DocumentTableProps {
   documents: DocumentRecord[];
@@ -800,11 +805,18 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
                       const isFolder = doc.filePath.endsWith('/') || doc.filePath.endsWith('\\') || !/\.[a-zA-Z0-9]{1,8}$/.test(doc.filePath.trim());
                       const cleanPath = doc.filePath.replace(/[/\\]+$/, '');
                       const displayName = cleanPath.split(/[/\\]/).pop() || doc.filePath;
+                      const isAstra = isAstraNetworkPath(doc.filePath);
+                      const currentUser = getAstraCurrentUser();
+                      const localResolved = isAstra ? resolveAstraPathForOpening(doc.filePath, currentUser) : doc.filePath;
+                      const tooltip = isAstra
+                        ? `Сетевая ссылка в БД:\n${doc.filePath}\n\nОткрытие на данном ПК (${currentUser}):\n${localResolved}`
+                        : `Открыть ${isFolder ? 'папку' : 'файл'}:\n${doc.filePath}`;
+
                       return (
                         <button
                           type="button"
                           onClick={() => handleOpenFile(doc.filePath)}
-                          title={`Открыть ${isFolder ? 'папку' : 'файл'}: ${doc.filePath}`}
+                          title={tooltip}
                           className={`inline-flex items-center gap-1.5 ${isFolder ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300' : 'text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300'} hover:underline max-w-full font-mono text-[11px] cursor-pointer break-all whitespace-normal text-left`}
                         >
                           {isFolder ? (
